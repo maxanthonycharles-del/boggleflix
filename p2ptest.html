@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><title>p2p test</title></head><body>
+<h1 id="me">loading…</h1><pre id="log"></pre>
+<script src="assets/trystero-nostr.bundle.js"></script>
+<script>
+const log = m => { document.getElementById('log').textContent += m + '\n'; };
+document.getElementById('me').textContent = 'self: ' + Trystero.selfId.slice(0,8);
+const room = Trystero.joinRoom({appId:'boggleflix-test'}, 'smoketest-room-v3');
+const hi = room.makeAction('hi');
+room.onPeerJoin = id => { log('JOIN ' + id.slice(0,8)); hi.send({from: Trystero.selfId.slice(0,8)}, {target: id}); };
+room.onPeerLeave = id => log('LEAVE ' + id.slice(0,8));
+hi.onMessage = (data, {peerId}) => log('HI from ' + peerId.slice(0,8) + ' payload=' + JSON.stringify(data));
+log('joined, waiting…');
+</script></body></html>
