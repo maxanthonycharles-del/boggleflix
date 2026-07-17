@@ -9,7 +9,9 @@ either **Host a party** (share the 4-letter code) or **Join with a code**.
 
 ## Modes
 - **Party Mode** — up to 8 players. The host picks grid size (4×4 / 5×5 / 6×6),
-  round timer (30s–3m), minimum word length (3/4/5) and rounds (1/3/5).
+  round timer (30s–3m), minimum word length (3/4/5/6) and rounds (1/3/5).
+  Minimum 6 wants a big board — a 4×4 often holds no 6-letter word at all, so
+  the lobby says so when you pick that pair.
   Everyone gets the identical board, a synced countdown, live scores during the
   round, standings between rounds, and a podium with awards at the end.
 - **Daily Puzzle** — one shared board per day (seeded from the date). Compare
@@ -36,6 +38,12 @@ forever.
 Words are checked against the public-domain ENABLE list (3–8 letters,
 family-filtered, ~79k words), embedded in the page — validation is instant and
 offline.
+
+Dice follow the real sets, with one deliberate exception: the 6×6 Super Big
+Boggle set has a cube reading QU/AN/IN/TH/ER/HE, and those two-letter tiles read
+as a bug to players, so that cube is a plain six-letter one here. `Qu` is the
+only tile that is ever two characters — every set has it, and a bare Q is a dead
+tile without it.
 
 ## Development
 - `party.src.html` — markup + styles (placeholders for fonts/vendor/app)

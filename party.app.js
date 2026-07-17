@@ -46,8 +46,12 @@ const DICE4 = ["AAEEGN","ABBJOO","ACHOPS","AFFKPS","AOOTTW","CIMOTU","DEILRX","D
 const DICE5 = ["AAAFRS","AAEEEE","AAFIRS","ADENNN","AEEEEM","AEEGMU","AEGMNN","AFIRSY",
   "BJKQXZ","CCNSTW","CEIILT","CEILPT","CEIPST","DDLNOR","DHHLOR","DHHNOT","DHLNOR",
   "EIIITT","EMOTTT","ENSSSU","FIPRSY","GORRVW","HIPRRY","NOOTUW","OOOTTU"];
+// The real 6×6 set (Super Big Boggle) has one cube reading QU/AN/IN/TH/ER/HE.
+// Two-letter tiles read as a mistake to players, so that cube is a plain
+// six-letter one here — echoing the letters it used to carry. Qu stays: it is on
+// every Boggle set, and a lone Q needs a U beside it to be worth anything.
 const DICE6 = ["AAAFRS","AAEEEE","AAEEOO","AAFIRS","ABDEIO","ADENNN","AEEEEM","AEEGMU",
-  "AEGMNN","AEILMN","AEINOU","AFIRSY",["AN","ER","HE","IN","QU","TH"],"BBJKXZ","CCENST",
+  "AEGMNN","AEILMN","AEINOU","AFIRSY","AEHINT","BBJKXZ","CCENST",
   "CDDLNN","CEIITT","CEIPST","CFGNUY","DDHNOT","DHHLOR","DHHNOW","DHRTVW","EHILRS",
   "EIILST","EIMNRS","EIQSSU","EMOTTT","ENSSSU","GORRVW","HIRSTV","HOPRST","IPRSYY",
   "JKQWXZ","NOOTUW","OOOTTU"];
@@ -57,8 +61,9 @@ function genBoard(seed, n){
   const rnd = rngFromSeed(seed);
   const dice = DICE_FOR[n].slice();
   for (let i=dice.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); [dice[i],dice[j]]=[dice[j],dice[i]]; }
+  // Every face is one letter; Q is the sole exception and always comes up "QU".
   return dice.map(d => {
-    const f = Array.isArray(d) ? d[Math.floor(rnd()*d.length)] : d[Math.floor(rnd()*6)];
+    const f = d[Math.floor(rnd()*6)];
     return f === 'Q' ? 'QU' : f.toUpperCase();
   });
 }
@@ -440,7 +445,7 @@ function sanitizeCfg(d){
   return {
     g: pick(+d.g, [4,5,6], 4),
     t: pick(+d.t, [30,60,90,120,180], 90),
-    m: pick(+d.m, [3,4,5], 3),
+    m: pick(+d.m, [3,4,5,6], 3),
     r: pick(+d.r, [1,3,5], 3)
   };
 }
@@ -569,6 +574,11 @@ function renderSettings(){
   $('settings-owner').textContent = (G.mode !== 'party' || G.isHost)
     ? "you're the host — you decide!"
     : 'the host picks these';
+  // A 4×4 board frequently holds no 6-letter word at all — roughly one board in
+  // four is unwinnable, which is a miserable round to sit through.
+  const thin = G.cfg.g === 4 && G.cfg.m === 6;
+  $('set-warn').hidden = !thin;
+  if (thin) $('set-warn').textContent = '⚠️ 4×4 boards often have no 6-letter words at all — try 5×5 or 6×6 for this one.';
 }
 SEGS.forEach(([segId, key]) => {
   $(segId).querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
@@ -818,7 +828,11 @@ boardEl.addEventListener('pointerdown', e => {
   try { boardEl.setPointerCapture(e.pointerId); } catch(err){}
   G.path = []; addToPath(i);
 });
-boardEl.addEventListener('pointermove', e => {
+/* Track and end the stroke on the window rather than the board. A finger that
+   lifts past the edge of the tray — or a pointer capture the browser quietly
+   drops — never delivers pointerup to the board itself, which used to leave
+   activePointer set forever and silently swallow every word after the first. */
+window.addEventListener('pointermove', e => {
   if (!G.playing || e.pointerId !== G.activePointer || !G.path.length) return;
   e.preventDefault();
   const i = cellFromPoint(e.clientX, e.clientY, false);
@@ -827,15 +841,15 @@ boardEl.addEventListener('pointermove', e => {
   if (i === last) return;
   if (G.path.length > 1 && i === G.path[G.path.length-2]){ G.path.pop(); setSel(); return; }
   if (!G.path.includes(i) && G.adj[last].includes(i)) addToPath(i);
-});
+}, {passive: false});
 function endStroke(e){
   if (e.pointerId !== G.activePointer) return;
   G.activePointer = null;
   if (!G.playing){ G.path = []; clearSel(); return; }
   submitPath();
 }
-boardEl.addEventListener('pointerup', endStroke);
-boardEl.addEventListener('pointercancel', endStroke);
+window.addEventListener('pointerup', endStroke);
+window.addEventListener('pointercancel', endStroke);
 boardEl.addEventListener('contextmenu', e => e.preventDefault());
 
 function submitPath(){
