@@ -213,10 +213,17 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .word-pill.good{background:var(--green);color:#fff;box-shadow:0 4px 0 var(--green-edge)}
 .word-pill.dupe{background:var(--gold);color:var(--navy);box-shadow:0 4px 0 var(--gold-edge)}
 .word-pill.bad{background:var(--bad);color:#fff;text-decoration:line-through;box-shadow:0 4px 0 #C21E2C}
-.board-wrap{flex:1;min-height:0;display:grid;place-items:center}
+.board-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;container-type:size}
+/* Largest square that fits, always centred. 100cqmin is the smaller of the
+   board area's two sides, so a width×height of that is guaranteed square and
+   guaranteed to fit both ways — it can't overflow sideways or drift off-centre.
+   The width/max-height/aspect line above it is the fallback for browsers
+   without container units. Replaces an older min()/dvh/aspect combo that some
+   phones rendered shifted to one side. */
 .tray{background:linear-gradient(170deg,var(--tray1),var(--tray2));border-radius:24px;padding:clamp(8px,2.4vw,12px);
   box-shadow:0 8px 0 #14297A,0 18px 40px rgba(120,8,55,.3),inset 0 2px 8px rgba(255,255,255,.25);
-  width:min(100%,54vh);width:min(100%,54dvh);max-height:100%;aspect-ratio:1;position:relative}
+  width:100%;max-height:100%;aspect-ratio:1;position:relative;
+  width:100cqmin;height:100cqmin;max-height:100cqmin}
 .board{position:relative;width:100%;height:100%;display:grid;gap:clamp(4px,1.4vw,8px);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .board.shake{animation:shake .3s ease}
 @keyframes shake{20%{transform:translateX(-7px)}45%{transform:translateX(6px)}70%{transform:translateX(-4px)}90%{transform:translateX(2px)}}
@@ -545,7 +552,8 @@ const DICE6 = ["AAAFRS","AAEEEE","AAEEOO","AAFIRS","ABDEIO","ADENNN","AEEEEM","A
   "JKQWXZ","NOOTUW","OOOTTU"];
 const DICE_FOR = {4: DICE4, 5: DICE5, 6: DICE6};
 
-function genBoard(seed, n){
+const VOWELS = new Set(['A','E','I','O','U']);
+function rollBoard(seed, n){
   const rnd = rngFromSeed(seed);
   const dice = DICE_FOR[n].slice();
   for (let i=dice.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); [dice[i],dice[j]]=[dice[j],dice[i]]; }
@@ -554,6 +562,25 @@ function genBoard(seed, n){
     const f = d[Math.floor(rnd()*6)];
     return f === 'Q' ? 'QU' : f.toUpperCase();
   });
+}
+/* Real Boggle dice are sound on average but the unlucky tail is miserable — a
+   vowel-starved board (WNAT/OFNT/ODTN) or five of one letter. Re-roll off a
+   derived seed until the board clears a basic quality bar. Deterministic in the
+   seed, so every phone in a party lands on the exact same board without any
+   coordination — same input, same re-rolls, same result. */
+function genBoard(seed, n){
+  const minVowels = Math.round(n * n * 0.28); // 4×4→4, 5×5→7, 6×6→10 (~28%)
+  const maxSame = n - 1;                       // 4×4→3, 5×5→4, 6×6→5
+  let board = rollBoard(seed, n);
+  for (let attempt = 1; attempt <= 12; attempt++){
+    const counts = {};
+    let vowels = 0;
+    for (const c of board){ counts[c] = (counts[c]||0) + 1; if (VOWELS.has(c[0])) vowels++; }
+    let most = 0; for (const k in counts) if (counts[k] > most) most = counts[k];
+    if (vowels >= minVowels && most <= maxSame) break;
+    board = rollBoard(seed + '~' + attempt, n);
+  }
+  return board;
 }
 function adjacency(n){
   const adj = [];

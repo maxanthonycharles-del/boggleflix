@@ -57,7 +57,8 @@ const DICE6 = ["AAAFRS","AAEEEE","AAEEOO","AAFIRS","ABDEIO","ADENNN","AEEEEM","A
   "JKQWXZ","NOOTUW","OOOTTU"];
 const DICE_FOR = {4: DICE4, 5: DICE5, 6: DICE6};
 
-function genBoard(seed, n){
+const VOWELS = new Set(['A','E','I','O','U']);
+function rollBoard(seed, n){
   const rnd = rngFromSeed(seed);
   const dice = DICE_FOR[n].slice();
   for (let i=dice.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); [dice[i],dice[j]]=[dice[j],dice[i]]; }
@@ -66,6 +67,25 @@ function genBoard(seed, n){
     const f = d[Math.floor(rnd()*6)];
     return f === 'Q' ? 'QU' : f.toUpperCase();
   });
+}
+/* Real Boggle dice are sound on average but the unlucky tail is miserable — a
+   vowel-starved board (WNAT/OFNT/ODTN) or five of one letter. Re-roll off a
+   derived seed until the board clears a basic quality bar. Deterministic in the
+   seed, so every phone in a party lands on the exact same board without any
+   coordination — same input, same re-rolls, same result. */
+function genBoard(seed, n){
+  const minVowels = Math.round(n * n * 0.28); // 4×4→4, 5×5→7, 6×6→10 (~28%)
+  const maxSame = n - 1;                       // 4×4→3, 5×5→4, 6×6→5
+  let board = rollBoard(seed, n);
+  for (let attempt = 1; attempt <= 12; attempt++){
+    const counts = {};
+    let vowels = 0;
+    for (const c of board){ counts[c] = (counts[c]||0) + 1; if (VOWELS.has(c[0])) vowels++; }
+    let most = 0; for (const k in counts) if (counts[k] > most) most = counts[k];
+    if (vowels >= minVowels && most <= maxSame) break;
+    board = rollBoard(seed + '~' + attempt, n);
+  }
+  return board;
 }
 function adjacency(n){
   const adj = [];
