@@ -652,9 +652,10 @@ const Music = (() => {
   const HOOK = [0,2,4,2, 1,3,5,3, 0,2,4,5, 3,2,1,0].map(i => SCALE[i]);
 
   let timer = 0, beatIdx = 0, playing = false, bus = null;
+  const LEVEL = 0.5;
 
   function getBus(ctx){
-    if (!bus){ bus = ctx.createGain(); bus.gain.value = 0.5; bus.connect(ctx.destination); }
+    if (!bus){ bus = ctx.createGain(); bus.gain.value = LEVEL; bus.connect(ctx.destination); }
     return bus;
   }
   function note(ctx, dest, freq, t0, dur, type, vol){
@@ -682,16 +683,31 @@ const Music = (() => {
       if (playing || !P.sound) return;
       const ctx = ac(); if (!ctx) return;
       if (ctx.state === 'suspended') ctx.resume();
+      // A stop() may have zeroed the bus — bring it back before scheduling resumes.
+      if (bus){ bus.gain.cancelScheduledValues(ctx.currentTime); bus.gain.setValueAtTime(LEVEL, ctx.currentTime); }
       playing = true;
       tick();
     },
-    stop(){ playing = false; clearTimeout(timer); },
+    stop(){
+      playing = false;
+      clearTimeout(timer);
+      // Silence right now, not whenever whatever's already ringing finishes —
+      // a chord pad note can be scheduled up to ~2s out, and "sound off" has
+      // to mean instantly off, not "off in a couple of seconds."
+      if (bus){ const ctx = ac(); if (ctx){ bus.gain.cancelScheduledValues(ctx.currentTime); bus.gain.setValueAtTime(0.0001, ctx.currentTime); } }
+    },
     setEnabled(on){ on ? this.start() : this.stop(); }
   };
 })();
-// Autoplay policy needs a real gesture — the first tap anywhere starts it.
-document.addEventListener('pointerdown', function unlockMusic(){
-  document.removeEventListener('pointerdown', unlockMusic);
+/* Autoplay policy needs a real gesture — the first tap anywhere starts it. Uses
+   click, not pointerdown: pointerdown fires and bubbles to this document-level
+   listener BEFORE the SOUND button's own click handler has flipped P.sound, so
+   tapping "off" as your very first-ever tap raced Music.start() ahead of the
+   toggle and left a few notes already scheduled to ring for up to ~2s. click
+   fires after the target's own handler, so by the time this listener sees it,
+   P.sound already reflects what was actually tapped. */
+document.addEventListener('click', function unlockMusic(){
+  document.removeEventListener('click', unlockMusic);
   Music.start();
 }, {once: true});
 document.addEventListener('visibilitychange', () => {
