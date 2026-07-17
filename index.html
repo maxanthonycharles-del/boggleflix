@@ -183,10 +183,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 /* ---------- GAME ---------- */
 #scr-game{padding:10px 12px calc(8px + env(safe-area-inset-bottom));height:100vh;height:100dvh;overflow:hidden;gap:7px}
 .hud{display:flex;align-items:center;gap:8px}
-.hud-exit{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+.hud-btn{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
   font-family:var(--display);font-weight:800;font-size:15px;line-height:1;color:#fff;
   background:rgba(30,42,94,.35);transition:transform .1s ease,background .15s ease}
-.hud-exit:active{transform:scale(.9);background:rgba(30,42,94,.55)}
+.hud-btn:active{transform:scale(.9);background:rgba(30,42,94,.55)}
+.hud-btn.sound{font-size:15px}
 .round-pill{font-family:var(--display);font-weight:800;font-size:14px;color:#fff;background:rgba(30,42,94,.35);border-radius:999px;padding:5px 12px;white-space:nowrap}
 .timer-wrap{flex:1;height:22px;background:rgba(30,42,94,.3);border-radius:999px;overflow:hidden;position:relative}
 .timer-fill{position:absolute;inset:0;width:100%;border-radius:inherit;background:linear-gradient(90deg,#00C566,#7DE33C);transition:background .4s ease}
@@ -414,9 +415,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   <!-- ============ GAME ============ -->
   <section class="screen" id="scr-game">
     <div class="hud">
-      <button class="hud-exit" id="btn-game-exit" aria-label="Leave the game">✕</button>
+      <button class="hud-btn" id="btn-game-exit" aria-label="Leave the game">✕</button>
       <span class="round-pill" id="round-pill">R1/3</span>
       <div class="timer-wrap"><div class="timer-fill" id="timer-fill"></div><div class="timer-num" id="timer-num">1:30</div></div>
+      <button class="hud-btn sound" id="btn-game-sound" aria-label="Toggle sound">🔊</button>
       <span class="my-score" id="my-score">0</span>
     </div>
     <div class="rivals" id="rivals"></div>
@@ -832,10 +834,22 @@ $('name-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn
 $('btn-me').addEventListener('click', openName);
 
 /* ---------------- home ---------------- */
+// Keep both sound controls (home button + in-game HUD) showing the same state.
+function applySoundUI(){
+  $('btn-sound').textContent = P.sound ? 'SOUND ON' : 'SOUND OFF';
+  $('btn-game-sound').textContent = P.sound ? '🔊' : '🔇';
+}
+function toggleSound(){
+  P.sound = !P.sound;
+  store.set('sound', P.sound);
+  applySoundUI();
+  Music.setEnabled(P.sound);
+  if (P.sound) snd.tick(3);
+}
 function refreshHome(){
   $('me-name').textContent = P.name || 'Player';
   $('me-face').textContent = P.emoji || '🦊';
-  $('btn-sound').textContent = P.sound ? 'SOUND ON' : 'SOUND OFF';
+  applySoundUI();
   const daily = store.get('daily-' + todayKey(), null);
   $('daily-done').hidden = daily === null;
   if (daily !== null) $('daily-done').textContent = daily + ' PTS ✓';
@@ -844,7 +858,8 @@ function refreshHome(){
     ? `Best round: ${best} pts · ${games} game${games===1?'':'s'} played`
     : 'Find words. Longer = more points!';
 }
-$('btn-sound').addEventListener('click', () => { P.sound = !P.sound; store.set('sound', P.sound); refreshHome(); Music.setEnabled(P.sound); if (P.sound) snd.tick(3); });
+$('btn-sound').addEventListener('click', toggleSound);
+$('btn-game-sound').addEventListener('click', toggleSound);
 $('btn-host').addEventListener('click', () => hostParty());
 $('btn-join').addEventListener('click', () => { $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80); });
 $('btn-join-back').addEventListener('click', () => show('home'));

@@ -337,10 +337,22 @@ $('name-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn
 $('btn-me').addEventListener('click', openName);
 
 /* ---------------- home ---------------- */
+// Keep both sound controls (home button + in-game HUD) showing the same state.
+function applySoundUI(){
+  $('btn-sound').textContent = P.sound ? 'SOUND ON' : 'SOUND OFF';
+  $('btn-game-sound').textContent = P.sound ? '🔊' : '🔇';
+}
+function toggleSound(){
+  P.sound = !P.sound;
+  store.set('sound', P.sound);
+  applySoundUI();
+  Music.setEnabled(P.sound);
+  if (P.sound) snd.tick(3);
+}
 function refreshHome(){
   $('me-name').textContent = P.name || 'Player';
   $('me-face').textContent = P.emoji || '🦊';
-  $('btn-sound').textContent = P.sound ? 'SOUND ON' : 'SOUND OFF';
+  applySoundUI();
   const daily = store.get('daily-' + todayKey(), null);
   $('daily-done').hidden = daily === null;
   if (daily !== null) $('daily-done').textContent = daily + ' PTS ✓';
@@ -349,7 +361,8 @@ function refreshHome(){
     ? `Best round: ${best} pts · ${games} game${games===1?'':'s'} played`
     : 'Find words. Longer = more points!';
 }
-$('btn-sound').addEventListener('click', () => { P.sound = !P.sound; store.set('sound', P.sound); refreshHome(); Music.setEnabled(P.sound); if (P.sound) snd.tick(3); });
+$('btn-sound').addEventListener('click', toggleSound);
+$('btn-game-sound').addEventListener('click', toggleSound);
 $('btn-host').addEventListener('click', () => hostParty());
 $('btn-join').addEventListener('click', () => { $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80); });
 $('btn-join-back').addEventListener('click', () => show('home'));
