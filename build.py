@@ -25,9 +25,11 @@ words = read('assets/dict.txt').strip()
 vendor = read('assets/trystero-nostr.bundle.js')
 baloo = read('assets/baloo2.b64').replace('\n', '').strip()
 fredoka = read('assets/fredoka.b64').replace('\n', '').strip()
+silence = read('assets/silence.b64').replace('\n', '').strip()
 
 assert '__DICT__' in app, 'dict placeholder missing from app js'
-app = app.replace('__DICT__', words)
+assert '__SILENCE__' in app, 'silence placeholder missing from app js'
+app = app.replace('__DICT__', words).replace('__SILENCE__', silence)
 
 for ph in ('__BALOO__', '__FREDOKA__', '__VENDOR__', '__APP__'):
     assert ph in src, f'{ph} missing from party.src.html'

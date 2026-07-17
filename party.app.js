@@ -68,21 +68,37 @@ function rollBoard(seed, n){
     return f === 'Q' ? 'QU' : f.toUpperCase();
   });
 }
+// Largest blob of one letter that are all touching (8-way). Two of a letter
+// side by side is fine; three-plus clumped together is what reads as "not
+// random" — the same letter staring back at you in a cluster.
+function maxAdjacentCluster(board, adj){
+  const seen = new Array(board.length).fill(false);
+  let max = 0;
+  for (let i = 0; i < board.length; i++){
+    if (seen[i]) continue;
+    const L = board[i], stack = [i]; seen[i] = true; let size = 0;
+    while (stack.length){ const c = stack.pop(); size++; for (const j of adj[c]) if (!seen[j] && board[j] === L){ seen[j] = true; stack.push(j); } }
+    if (size > max) max = size;
+  }
+  return max;
+}
 /* Real Boggle dice are sound on average but the unlucky tail is miserable — a
-   vowel-starved board (WNAT/OFNT/ODTN) or five of one letter. Re-roll off a
-   derived seed until the board clears a basic quality bar. Deterministic in the
-   seed, so every phone in a party lands on the exact same board without any
-   coordination — same input, same re-rolls, same result. */
+   vowel-starved board (WNAT/OFNT/ODTN), five of one letter, or a clump of the
+   same letter all touching. Re-roll off a derived seed until the board clears a
+   basic quality bar. Deterministic in the seed, so every phone in a party lands
+   on the exact same board without any coordination — same input, same re-rolls,
+   same result. */
 function genBoard(seed, n){
   const minVowels = Math.round(n * n * 0.28); // 4×4→4, 5×5→7, 6×6→10 (~28%)
   const maxSame = n - 1;                       // 4×4→3, 5×5→4, 6×6→5
+  const adj = adjacency(n);
   let board = rollBoard(seed, n);
-  for (let attempt = 1; attempt <= 12; attempt++){
+  for (let attempt = 1; attempt <= 16; attempt++){
     const counts = {};
     let vowels = 0;
     for (const c of board){ counts[c] = (counts[c]||0) + 1; if (VOWELS.has(c[0])) vowels++; }
     let most = 0; for (const k in counts) if (counts[k] > most) most = counts[k];
-    if (vowels >= minVowels && most <= maxSame) break;
+    if (vowels >= minVowels && most <= maxSame && maxAdjacentCluster(board, adj) <= 2) break;
     board = rollBoard(seed + '~' + attempt, n);
   }
   return board;
@@ -167,9 +183,27 @@ const snd = {
 const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch(e){} };
 
 /* ---------------- background music ---------------- */
+/* iOS silences Web Audio when the physical ring/silent switch is on. Holding a
+   looping (silent) HTMLAudioElement open promotes the page's audio session to
+   "playback", which plays through that switch — the standard fix so a phone on
+   silent still gets game sound. Must be kicked off inside a real gesture. */
+const SILENCE_SRC = 'data:audio/wav;base64,__SILENCE__';
+let sessionAudio = null;
+function holdAudioSession(){
+  try {
+    if (!sessionAudio){
+      sessionAudio = new Audio(SILENCE_SRC);
+      sessionAudio.loop = true;
+      sessionAudio.setAttribute('playsinline', '');
+    }
+    const p = sessionAudio.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch(e){}
+}
+function releaseAudioSession(){ try { if (sessionAudio) sessionAudio.pause(); } catch(e){} }
+
 /* A short original loop, synthesized live with the same oscillator technique as
-   the SFX above — no audio file, so nothing to license and nothing added to
-   page weight. Runs under the single SOUND toggle, same as every other sound
+   the SFX above. Runs under the single SOUND toggle, same as every other sound
    here; there's no separate music control. */
 const Music = (() => {
   const BPM = 116, BEAT = 60 / BPM;
@@ -184,7 +218,7 @@ const Music = (() => {
   const HOOK = [0,2,4,2, 1,3,5,3, 0,2,4,5, 3,2,1,0].map(i => SCALE[i]);
 
   let timer = 0, beatIdx = 0, playing = false, bus = null;
-  const LEVEL = 0.5;
+  const LEVEL = 0.62;
 
   function getBus(ctx){
     if (!bus){ bus = ctx.createGain(); bus.gain.value = LEVEL; bus.connect(ctx.destination); }
@@ -204,8 +238,8 @@ const Music = (() => {
     if (ctx){
       const dest = getBus(ctx), t0 = ctx.currentTime + .05;
       const bar = Math.floor(beatIdx / 4) % CHORDS.length;
-      if (beatIdx % 4 === 0) for (const f of CHORDS[bar]) note(ctx, dest, f, t0, BEAT*4*.95, 'sine', .045);
-      note(ctx, dest, HOOK[beatIdx % HOOK.length], t0, BEAT*.85, 'triangle', .05);
+      if (beatIdx % 4 === 0) for (const f of CHORDS[bar]) note(ctx, dest, f, t0, BEAT*4*.95, 'sine', .06);
+      note(ctx, dest, HOOK[beatIdx % HOOK.length], t0, BEAT*.85, 'triangle', .085);
       beatIdx++;
     }
     timer = setTimeout(tick, BEAT * 1000);
@@ -215,6 +249,7 @@ const Music = (() => {
       if (playing || !P.sound) return;
       const ctx = ac(); if (!ctx) return;
       if (ctx.state === 'suspended') ctx.resume();
+      holdAudioSession(); // keep sound audible with the phone on silent
       // A stop() may have zeroed the bus — bring it back before scheduling resumes.
       if (bus){ bus.gain.cancelScheduledValues(ctx.currentTime); bus.gain.setValueAtTime(LEVEL, ctx.currentTime); }
       playing = true;
@@ -223,6 +258,7 @@ const Music = (() => {
     stop(){
       playing = false;
       clearTimeout(timer);
+      releaseAudioSession();
       // Silence right now, not whenever whatever's already ringing finishes —
       // a chord pad note can be scheduled up to ~2s out, and "sound off" has
       // to mean instantly off, not "off in a couple of seconds."

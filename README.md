@@ -59,8 +59,14 @@ against.
 ## Music
 A short original loop plays under everything, synthesized live in the browser
 (same technique as the tap/word sound effects, just longer) — not a recording,
-so nothing to license and nothing added to the page. It starts on your first
-tap and follows the SOUND toggle like every other sound in the game.
+so nothing to license. It starts on your first tap and follows the SOUND toggle
+(on the home screen and in the game HUD) like every other sound.
+
+iOS silences Web Audio when the phone's ring/silent switch is on. To play
+through that, a tiny silent looping clip (`assets/silence.b64`) holds the audio
+session open in "playback" mode while sound is enabled. Even so, a phone with
+the switch on or the volume down may still be quiet — that's the OS, not the
+game.
 
 ## Development
 - `party.src.html` — markup + styles (placeholders for fonts/vendor/app)
