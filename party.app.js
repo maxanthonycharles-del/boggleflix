@@ -696,6 +696,7 @@ function beginRound(){
   $('timer-num').textContent = fmtTime(G.totalMs);
   renderRivals();
   show('game');
+  fitTiles(); // now the board has a size, so the letters can be scaled to it
   requestWake();
   store.set('games', store.get('games',0) + 1);
 
@@ -754,9 +755,10 @@ function renderBoard(){
   requestAnimationFrame(fitTiles);
 }
 function fitTiles(){
-  const r = boardEl.getBoundingClientRect();
-  const ts = r.width / G.n;
-  boardEl.style.setProperty('--tilefs', Math.floor(ts * (G.n === 6 ? .44 : .5)) + 'px');
+  const g = geom();
+  if (!g.size) return; // board isn't laid out yet — beginRound sizes it once shown
+  // Scale the letter to the tile itself, not to the tile-plus-gap.
+  boardEl.style.setProperty('--tilefs', Math.floor(g.size * (G.n === 6 ? .48 : .52)) + 'px');
   drawPath();
 }
 window.addEventListener('resize', () => { if (tileEls.length) fitTiles(); });
@@ -773,29 +775,46 @@ function tickTimer(){
 }
 
 /* input */
-function cellFromPoint(x, y, starting){
+/* The board is a grid with gaps between the tiles, so width/n is not the tile
+   pitch — assuming it drifted the hit zones a couple of px off the squares you
+   can actually see, and the old radius only covered the middle of each tile.
+   Measure the real geometry instead and let the whole tile respond. */
+function geom(){
   const r = boardEl.getBoundingClientRect();
-  const ts = r.width / G.n;
-  const c = Math.floor((x - r.left) / ts), row = Math.floor((y - r.top) / ts);
+  const gap = parseFloat(getComputedStyle(boardEl).columnGap) || 0;
+  // An unmeasured board (width 0, e.g. its screen is still hidden) would make
+  // this negative, so clamp: callers treat 0 as "not laid out yet".
+  const size = Math.max(0, (r.width - gap * (G.n - 1)) / G.n);
+  return {r, gap, size, pitch: size + gap};
+}
+function cellCentre(i, g){
+  return {x: (i % G.n) * g.pitch + g.size/2, y: Math.floor(i / G.n) * g.pitch + g.size/2};
+}
+function cellFromPoint(x, y, starting){
+  const g = geom();
+  if (!g.size) return -1;
+  // Snap to the nearest tile, then only reject points that are genuinely off it.
+  const c = Math.round((x - g.r.left - g.size/2) / g.pitch);
+  const row = Math.round((y - g.r.top - g.size/2) / g.pitch);
   if (c < 0 || c >= G.n || row < 0 || row >= G.n) return -1;
-  const cx = r.left + (c + .5) * ts, cy = r.top + (row + .5) * ts;
-  if (Math.hypot(x - cx, y - cy) > ts * (starting ? .5 : .37)) return -1;
+  const cx = g.r.left + c * g.pitch + g.size/2;
+  const cy = g.r.top + row * g.pitch + g.size/2;
+  if (Math.hypot(x - cx, y - cy) > g.size * (starting ? .72 : .58)) return -1;
   return row * G.n + c;
 }
 function wordFromPath(){ return G.path.map(i => G.board[i]).join(''); }
 const SVG_NS = 'http://www.w3.org/2000/svg';
 function drawPath(){
-  const r = boardEl.getBoundingClientRect();
-  pathSvg.setAttribute('viewBox', '0 0 ' + r.width + ' ' + r.height);
+  const g = geom();
+  pathSvg.setAttribute('viewBox', '0 0 ' + g.r.width + ' ' + g.r.height);
   pathSvg.replaceChildren();
   if (!G.path.length) return;
-  const ts = r.width / G.n;
-  const pts = G.path.map(i => ((i%G.n+.5)*ts) + ',' + ((Math.floor(i/G.n)+.5)*ts)).join(' ');
+  const pts = G.path.map(i => { const c = cellCentre(i, g); return c.x + ',' + c.y; }).join(' ');
   const line = document.createElementNS(SVG_NS, 'polyline');
   line.setAttribute('points', pts);
   line.setAttribute('fill','none');
   line.setAttribute('stroke','#FF2E63');
-  line.setAttribute('stroke-width', ts*.15);
+  line.setAttribute('stroke-width', g.size*.17);
   line.setAttribute('stroke-linecap','round');
   line.setAttribute('stroke-linejoin','round');
   pathSvg.appendChild(line);
@@ -819,6 +838,7 @@ function addToPath(i){
   snd.tick(G.path.length); buzz(8);
   setSel();
 }
+let lastPt = null; // last pointer sample, so we can fill in the gaps between them
 boardEl.addEventListener('pointerdown', e => {
   if (!G.playing || G.activePointer !== null) return;
   e.preventDefault();
@@ -826,25 +846,42 @@ boardEl.addEventListener('pointerdown', e => {
   if (i < 0) return;
   G.activePointer = e.pointerId;
   try { boardEl.setPointerCapture(e.pointerId); } catch(err){}
+  lastPt = {x: e.clientX, y: e.clientY};
   G.path = []; addToPath(i);
 });
 /* Track and end the stroke on the window rather than the board. A finger that
    lifts past the edge of the tray — or a pointer capture the browser quietly
    drops — never delivers pointerup to the board itself, which used to leave
    activePointer set forever and silently swallow every word after the first. */
-window.addEventListener('pointermove', e => {
-  if (!G.playing || e.pointerId !== G.activePointer || !G.path.length) return;
-  e.preventDefault();
-  const i = cellFromPoint(e.clientX, e.clientY, false);
+function feedPoint(x, y){
+  const i = cellFromPoint(x, y, false);
   if (i < 0) return;
   const last = G.path[G.path.length-1];
   if (i === last) return;
   if (G.path.length > 1 && i === G.path[G.path.length-2]){ G.path.pop(); setSel(); return; }
   if (!G.path.includes(i) && G.adj[last].includes(i)) addToPath(i);
+}
+window.addEventListener('pointermove', e => {
+  if (!G.playing || e.pointerId !== G.activePointer || !G.path.length) return;
+  e.preventDefault();
+  // Take every sample the browser captured, and walk the line between them: a
+  // quick flick otherwise lands either side of a tile and the letter is dropped.
+  const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+  const samples = coalesced && coalesced.length ? coalesced : [e];
+  for (const s of samples){
+    const x = s.clientX, y = s.clientY;
+    if (lastPt){
+      const dx = x - lastPt.x, dy = y - lastPt.y;
+      const steps = Math.min(24, Math.max(1, Math.round(Math.hypot(dx, dy) / 6)));
+      for (let k = 1; k <= steps; k++) feedPoint(lastPt.x + dx*k/steps, lastPt.y + dy*k/steps);
+    } else feedPoint(x, y);
+    lastPt = {x, y};
+  }
 }, {passive: false});
 function endStroke(e){
   if (e.pointerId !== G.activePointer) return;
   G.activePointer = null;
+  lastPt = null;
   if (!G.playing){ G.path = []; clearSel(); return; }
   submitPath();
 }
@@ -887,10 +924,10 @@ function flashPill(cls, text){
   flashPill.t = setTimeout(() => { if (!G.path.length){ pill.className = 'word-pill'; pill.textContent = ' '; } }, 900);
 }
 function floatPop(tileIdx, text){
-  const r = boardEl.getBoundingClientRect(), ts = r.width/G.n;
+  const g = geom();
   const d = el('div','float-pop', text);
-  d.style.left = ((tileIdx%G.n+.5)*ts) + 'px';
-  d.style.top = (Math.floor(tileIdx/G.n)*ts) + 'px';
+  d.style.left = cellCentre(tileIdx, g).x + 'px';
+  d.style.top = (Math.floor(tileIdx/G.n) * g.pitch) + 'px';
   boardEl.appendChild(d);
   setTimeout(() => d.remove(), 850);
 }
