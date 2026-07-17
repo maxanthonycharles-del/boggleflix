@@ -169,14 +169,21 @@ const G = {   // current game context
   activePointer: null,
   finsSelf: {},        // round -> fin payload (mine)
   lock: null,
-  finTimer: 0
+  finTimer: 0,
+  specTimer: 0,        // spectator watch interval
+  gossipTimer: 0,      // periodic roster/score broadcast
+  sweepTimer: 0,       // drops gossiped peers nobody reports any more
+  seq: 0               // my own broadcast counter — proves my news is new
 };
+const GOSSIP_MS = 3000;   // re-announce cadence
+const GOSSIP_TTL = 14000; // forget an indirect peer nobody has mentioned this long
 const DEV = /[?#&]dev\b/.test(location.href);
 
 /* ---------------- screens / toast / overlay ---------------- */
 const SCREENS = ['name','home','join','lobby','game','standings','podium'];
 function show(name){
   SCREENS.forEach(s => $('scr-'+s).classList.toggle('active', s === name));
+  $('confirm-exit').hidden = true; // never let a dialog outlive its screen
   window.scrollTo(0,0);
 }
 let toastT = 0;
@@ -266,16 +273,69 @@ function makeCode(){
 function myProfile(){
   return {n: P.name, e: P.emoji, h: G.isHost, j: G.joinedAt};
 }
+/* Everything we know about the party, re-broadcast on a timer. The mesh is not
+   always complete — two phones can both be talking to a third but not to each
+   other — so a player is only reliably visible to everyone if the people who
+   can see them pass it on. Scores only grow within a round, so merging by max
+   converges without a coordinator.
+
+   Each phone stamps its own broadcasts with a counter only it increments, so a
+   relayed copy is recognisable as old news. Without that, phones echo each
+   other's hearsay forever and someone who left never ages out. */
+function syncPayload(){
+  const players = {};
+  G.seq++;
+  players[Trystero.selfId] = {n: P.name, e: P.emoji, j: G.joinedAt, h: G.isHost, q: G.seq, sc: scSelf(), fin: G.finsSelf};
+  for (const [id, p] of G.peers){
+    if (p.gone) continue;
+    const relayed = {n: p.name, e: p.emoji, j: p.joinedAt, h: !!p.host, sc: p.sc || {}, fin: p.fin || {}};
+    if (Number.isFinite(p.seq)) relayed.q = p.seq;
+    players[id] = relayed;
+  }
+  return players;
+}
+/* live: first-hand proof this peer is alive right now (a message from them).
+   self: `inc` is their own account of themselves, so it wins on name/avatar. */
+function mergePlayer(id, inc, {live = false, self = false} = {}){
+  let cur = G.peers.get(id), isNew = false;
+  if (!cur){
+    cur = {name:'Player', emoji:'🙂', joinedAt: Date.now(), host:false, gone:false,
+           sc:{}, fin:{}, seq:-Infinity, seen:0, direct:false};
+    G.peers.set(id, cur);
+    isNew = true;
+  }
+  // Scores only grow within a round and finals never change, so merging these
+  // is safe from any source and in any order.
+  for (const r in inc.sc||{}) cur.sc[r] = Math.max(cur.sc[r]||0, inc.sc[r]||0);
+  for (const r in inc.fin||{}) if (!cur.fin[r]) cur.fin[r] = inc.fin[r];
+
+  const q = typeof inc.q === 'number' ? inc.q : null;
+  const fresh = live || isNew || (q !== null && q > cur.seq);
+  if (fresh){
+    if (q !== null && q > cur.seq) cur.seq = q;
+    cur.seen = Date.now();
+    cur.gone = false; cur.gone2 = false; // back with us — let a future exit announce again
+    if (inc.n !== undefined) cur.name = String(inc.n||'Player').slice(0,14);
+    if (inc.e !== undefined) cur.emoji = inc.e || '🙂';
+    if (inc.j !== undefined) cur.joinedAt = inc.j;
+    if (inc.h !== undefined) cur.host = !!inc.h;
+  }
+  if (self) cur.direct = true;
+  return isNew;
+}
 function connect(code, asHost){
   leaveNet();
   G.mode = 'party'; G.code = code; G.isHost = asHost; G.joinedAt = Date.now();
   G.peers = new Map(); G.finsSelf = {}; G.round = 0; G.seeds = [];
-  G.spectating = false;
+  G.spectating = false; G.seq = 0;
   if (asHost) G.cfg = store.get('cfg', {g:4, t:90, m:3, r:3});
 
-  const room = Trystero.joinRoom({appId:'boggleflix-party-v1'}, 'bfp-' + code.toLowerCase());
+  // More relays than the default 5 — each one is an extra chance for two phones
+  // to find each other, which is what makes joiners show up reliably.
+  const room = Trystero.joinRoom({appId:'boggleflix-party-v1', relayConfig:{redundancy: 12}}, 'bfp-' + code.toLowerCase());
   const A = {
     who:   room.makeAction('who'),
+    sync:  room.makeAction('sync'),
     cfg:   room.makeAction('cfg'),
     start: room.makeAction('start'),
     nxt:   room.makeAction('nxt'),
@@ -286,7 +346,10 @@ function connect(code, asHost){
   G.net = {room, A};
 
   room.onPeerJoin = id => {
-    A.who.send(myProfile(), {target: id});
+    const p = G.peers.get(id);
+    if (p){ p.direct = true; p.gone = false; p.seen = Date.now(); }
+    A.who.send({...myProfile(), ask: 1}, {target: id});
+    A.sync.send(syncPayload(), {target: id});
     if (G.isHost){
       A.cfg.send(G.cfg, {target: id});
       if (G.playing || (G.seeds.length && G.round < G.cfg.r)){
@@ -296,19 +359,33 @@ function connect(code, asHost){
   };
   room.onPeerLeave = id => {
     const p = G.peers.get(id);
-    if (p){ p.gone = true; }
+    if (p){ p.direct = false; p.gone = true; }
     electHost();
     renderLobbyPlayers(); renderRivals();
-    if (p && !p.gone2){ p.gone2 = true; toast((p.name||'Someone') + ' left'); }
     maybeFinishCollection();
+    // Losing our own link to someone doesn't mean they left the party — someone
+    // else may still be relaying them. Give that a moment to land first.
+    setTimeout(() => announceGone(id), GOSSIP_MS + 500);
   };
   A.who.onMessage = (d, {peerId}) => {
-    const existed = G.peers.has(peerId);
-    const prev = existed ? G.peers.get(peerId) : {sc:{}, fin:{}};
-    G.peers.set(peerId, {...prev, name: String(d.n||'Player').slice(0,14), emoji: d.e||'🙂', joinedAt: d.j||Date.now(), host: !!d.h, gone: false});
+    const fresh = mergePlayer(peerId, d, {live: true, self: true});
+    // Answer once, so a dropped hello still leaves both sides knowing each other.
+    if (d.ask) A.who.send({...myProfile(), ask: 0}, {target: peerId});
     electHost();
     renderLobbyPlayers(); renderRivals();
-    if (!existed && !G.playing) snd.tick(4);
+    if (fresh && !G.playing) snd.tick(4);
+  };
+  A.sync.onMessage = (d, {peerId}) => {
+    let fresh = false;
+    for (const id in d){
+      if (id === Trystero.selfId) continue; // never let anyone else define me
+      const own = id === peerId;
+      if (mergePlayer(id, d[id], {live: own, self: own})) fresh = true;
+    }
+    electHost();
+    renderLobbyPlayers(); renderRivals();
+    maybeFinishCollection();
+    if (fresh && !G.playing) snd.tick(4);
   };
   A.cfg.onMessage = d => {
     if (G.isHost) return;
@@ -318,21 +395,41 @@ function connect(code, asHost){
   A.start.onMessage = d => { if (!G.isHost) handleStart(d); };
   A.nxt.onMessage = d => { if (!G.isHost) handleNext(d); };
   A.sc.onMessage = (d, {peerId}) => {
-    const p = G.peers.get(peerId); if (!p) return;
-    p.sc[d.r] = d.s;
+    mergePlayer(peerId, {sc: {[d.r]: d.s}}, {live: true, self: true});
     renderRivals();
   };
   A.fin.onMessage = (d, {peerId}) => {
-    const p = G.peers.get(peerId); if (!p) return;
-    p.fin[d.r] = d;
-    p.sc[d.r] = d.s;
+    mergePlayer(peerId, {sc: {[d.r]: d.s}, fin: {[d.r]: d}}, {live: true, self: true});
     maybeFinishCollection();
     if (!G.playing) renderStandings();
   };
   A.again.onMessage = () => { if (!G.isHost) resetToLobby(); };
+
+  clearInterval(G.gossipTimer);
+  G.gossipTimer = setInterval(() => { if (G.net) G.net.A.sync.send(syncPayload()); }, GOSSIP_MS);
+  clearInterval(G.sweepTimer);
+  G.sweepTimer = setInterval(sweepPeers, GOSSIP_MS);
   openLobby();
 }
+// An indirect peer is only ever hearsay: once nobody relays them any more, they
+// have left. Directly connected peers are handled by onPeerLeave instead.
+function sweepPeers(){
+  let changed = false;
+  for (const [id, p] of G.peers){
+    if (p.direct || p.gone) continue;
+    if (Date.now() - (p.seen || 0) > GOSSIP_TTL){ p.gone = true; changed = true; announceGone(id); }
+  }
+  if (changed){ electHost(); renderLobbyPlayers(); renderRivals(); }
+}
+function announceGone(id){
+  const p = G.peers.get(id);
+  if (!p || !p.gone || p.gone2) return;
+  p.gone2 = true;
+  toast((p.name || 'Someone') + ' left');
+}
 function leaveNet(){
+  clearInterval(G.gossipTimer); G.gossipTimer = 0;
+  clearInterval(G.sweepTimer); G.sweepTimer = 0;
   if (G.net){ try { G.net.room.leave(); } catch(e){} }
   G.net = null;
 }
@@ -363,10 +460,14 @@ function colorOf(id){
   return COLORS[(idx >= 0 ? idx : 0) % COLORS.length];
 }
 function electHost(){
-  // earliest joiner among non-gone players becomes host (deterministic everywhere)
   const act = activePlayers();
   if (!act.length) return;
-  const [hostId] = act[0];
+  // Whoever opened the room claims host, and everyone honours the claim. Phones
+  // disagree about the wall clock, so joinedAt must never decide this: if the
+  // host leaves (or a split brain leaves two claiming it), fall back to the
+  // lowest peer id, which every phone computes the same way.
+  const claimers = act.filter(([, p]) => p.host);
+  const [hostId] = (claimers.length ? claimers : act).map(([id]) => id).sort();
   const wasHost = G.isHost;
   G.isHost = hostId === Trystero.selfId;
   for (const [id,p] of G.peers) p.host = id === hostId;
@@ -415,7 +516,29 @@ async function copyText(text, msg){
   }
   toast(ok ? msg : 'Could not copy — code: ' + G.code, 2600);
 }
-$('btn-lobby-leave').addEventListener('click', () => { leaveNet(); G.mode = null; refreshHome(); show('home'); });
+/* Stop everything the round has running — timers, countdown, wake lock — so a
+   round that is abandoned mid-flight can't fire roundOver() from under us. */
+function stopRound(){
+  G.playing = false;
+  cancelAnimationFrame(G.raf);
+  (G.cdTimers || []).forEach(clearTimeout);
+  G.cdTimers = [];
+  clearTimeout(G.finTimer);
+  clearInterval(G.specTimer); G.specTimer = 0;
+  G.activePointer = null; G.path = [];
+  releaseWake();
+  hideOverlay();
+}
+function quitToHome(){
+  stopRound();
+  clearSel();
+  leaveNet();
+  G.mode = null; G.code = null; G.seeds = []; G.round = 0;
+  G.peers = new Map(); G.finsSelf = {};
+  refreshHome();
+  show('home');
+}
+$('btn-lobby-leave').addEventListener('click', quitToHome);
 
 function renderLobbyPlayers(){
   if (G.mode !== 'party') return;
@@ -518,11 +641,8 @@ $('btn-again').addEventListener('click', () => {
   } else startLocal(G.mode);
 });
 $('btn-stand-again').addEventListener('click', () => startLocal(G.mode));
-$('btn-podium-home').addEventListener('click', () => { leaveNet(); G.mode = null; refreshHome(); show('home'); });
-$('btn-stand-home').addEventListener('click', () => {
-  if (G.mode === 'party'){ leaveNet(); G.mode = null; }
-  refreshHome(); show('home');
-});
+$('btn-podium-home').addEventListener('click', quitToHome);
+$('btn-stand-home').addEventListener('click', quitToHome);
 
 /* ---------------- local modes ---------------- */
 function startLocal(mode){
@@ -576,10 +696,11 @@ function beginRound(){
     overlay('👀', 'Round in progress — you join the next one!', 'word');
     setTimeout(hideOverlay, 2200);
     // watch live, then results arrive via fins
-    const t = setInterval(() => {
-      if (!G.seeds.length){ clearInterval(t); return; }
+    clearInterval(G.specTimer);
+    G.specTimer = setInterval(() => {
+      if (!G.seeds.length){ clearInterval(G.specTimer); G.specTimer = 0; return; }
       const left = G.startAt + G.totalMs - Date.now();
-      if (left <= 0){ clearInterval(t); roundOver(true); }
+      if (left <= 0){ clearInterval(G.specTimer); G.specTimer = 0; roundOver(true); }
     }, 500);
     return;
   }
@@ -761,6 +882,19 @@ function floatPop(tileIdx, text){
 }
 $('btn-finish').addEventListener('click', () => { if (G.playing && G.mode !== 'party') roundOver(false); });
 window.__end = () => G.playing && roundOver(false);
+
+/* leave a game in progress */
+function closeExitConfirm(){ $('confirm-exit').hidden = true; }
+$('btn-game-exit').addEventListener('click', () => {
+  $('confirm-exit-sub').textContent = G.mode === 'party'
+    ? "You'll go back to the menu — the others keep playing."
+    : "You'll go back to the menu. This round won't be saved.";
+  $('confirm-exit').hidden = false;
+});
+$('btn-exit-stay').addEventListener('click', closeExitConfirm);
+$('btn-exit-go').addEventListener('click', () => { closeExitConfirm(); quitToHome(); });
+$('confirm-exit').addEventListener('click', e => { if (e.target === $('confirm-exit')) closeExitConfirm(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('confirm-exit').hidden) closeExitConfirm(); });
 
 /* live rivals rail */
 function renderRivals(){

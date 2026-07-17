@@ -181,7 +181,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 
 /* ---------- GAME ---------- */
 #scr-game{padding:10px 12px calc(8px + env(safe-area-inset-bottom));height:100vh;height:100dvh;overflow:hidden;gap:7px}
-.hud{display:flex;align-items:center;gap:10px}
+.hud{display:flex;align-items:center;gap:8px}
+.hud-exit{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--display);font-weight:800;font-size:15px;line-height:1;color:#fff;
+  background:rgba(30,42,94,.35);transition:transform .1s ease,background .15s ease}
+.hud-exit:active{transform:scale(.9);background:rgba(30,42,94,.55)}
 .round-pill{font-family:var(--display);font-weight:800;font-size:14px;color:#fff;background:rgba(30,42,94,.35);border-radius:999px;padding:5px 12px;white-space:nowrap}
 .timer-wrap{flex:1;height:22px;background:rgba(30,42,94,.3);border-radius:999px;overflow:hidden;position:relative}
 .timer-fill{position:absolute;inset:0;width:100%;border-radius:inherit;background:linear-gradient(90deg,#00C566,#7DE33C);transition:background .4s ease}
@@ -293,6 +297,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .overlay-big.word{font-size:clamp(38px,11vw,64px)}
 .overlay-sub{color:#fff;font-weight:600;font-size:16px;text-shadow:0 1px 3px rgba(0,0,0,.4)}
 @keyframes count{0%{transform:scale(2.2) rotate(-6deg);opacity:0}30%{transform:scale(1) rotate(0);opacity:1}100%{opacity:1}}
+/* confirm dialog (leaving a live game) */
+.modal{position:fixed;inset:0;z-index:55;display:grid;place-items:center;padding:22px;background:rgba(30,42,94,.55);backdrop-filter:blur(5px)}
+.modal-card{width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px;text-align:center;animation:modalin .28s cubic-bezier(.2,1.5,.4,1)}
+@keyframes modalin{from{transform:scale(.85);opacity:0}}
+.modal-card .h1{font-size:24px}
+.modal-sub{font-size:14px;font-weight:600;color:var(--navy-soft);margin-bottom:2px}
 .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);z-index:60;background:var(--navy);color:#fff;
   font-weight:600;font-size:14px;border-radius:999px;padding:11px 20px;box-shadow:0 10px 26px rgba(0,0,0,.3);opacity:0;transition:transform .3s ease,opacity .3s ease;max-width:88vw;text-align:center}
 .toast.show{transform:translate(-50%,0);opacity:1}
@@ -395,6 +405,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   <!-- ============ GAME ============ -->
   <section class="screen" id="scr-game">
     <div class="hud">
+      <button class="hud-exit" id="btn-game-exit" aria-label="Leave the game">✕</button>
       <span class="round-pill" id="round-pill">R1/3</span>
       <div class="timer-wrap"><div class="timer-fill" id="timer-fill"></div><div class="timer-num" id="timer-num">1:30</div></div>
       <span class="my-score" id="my-score">0</span>
@@ -454,6 +465,15 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     <div class="overlay-big" id="overlay-big">3</div>
     <div class="overlay-sub" id="overlay-sub"></div>
   </div></div>
+
+  <div class="modal" id="confirm-exit" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-exit-title">
+    <div class="card modal-card">
+      <div class="h1" id="confirm-exit-title">Leave the game?</div>
+      <div class="modal-sub" id="confirm-exit-sub">You'll go back to the menu.</div>
+      <button class="btn green big" id="btn-exit-stay">Keep playing</button>
+      <button class="btn pink big" id="btn-exit-go">Leave</button>
+    </div>
+  </div>
   <canvas id="confetti"></canvas>
   <div class="toast" id="toast"></div>
 </main>
