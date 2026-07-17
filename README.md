@@ -45,6 +45,23 @@ as a bug to players, so that cube is a plain six-letter one here. `Qu` is the
 only tile that is ever two characters — every set has it, and a bare Q is a dead
 tile without it.
 
+## Scoring
+3-letter word = 1 point, 4 = 2, 5 = 3, +1 per letter after that. No bonus for
+speed, no penalty for a rejected word (rejected words just don't score).
+
+In Party Mode, a word only *you* found that round scores double — Netflix
+Boggle Party's "unique word" bonus. That needs to see everyone's word list, so
+it settles once round results are in, not during live play; every phone
+computes it from the same reported lists and lands on the same total without a
+scorekeeper. Solo and Daily never apply it — there's no one to be unique
+against.
+
+## Music
+A short original loop plays under everything, synthesized live in the browser
+(same technique as the tap/word sound effects, just longer) — not a recording,
+so nothing to license and nothing added to the page. It starts on your first
+tap and follows the SOUND toggle like every other sound in the game.
+
 ## Development
 - `party.src.html` — markup + styles (placeholders for fonts/vendor/app)
 - `party.app.js` — all game logic

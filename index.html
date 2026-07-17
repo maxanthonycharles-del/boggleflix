@@ -604,7 +604,8 @@ function solveBoard(board, n, minLen){
   for (let i=0;i<n*n;i++) walk(i, root, '');
   return results;
 }
-function scoreFor(w){ const L = w.length; return L <= 4 ? 1 : L === 5 ? 2 : L === 6 ? 3 : L === 7 ? 5 : 11; }
+// Netflix Boggle Party's table: 3=1, 4=2, 5=3, +1 per letter beyond that.
+function scoreFor(w){ return w.length - 2; }
 
 /* ---------------- sound / haptics ---------------- */
 let AC = null;
@@ -632,6 +633,70 @@ const snd = {
   fanfare(){ [523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,.16,'triangle',.09,i*.11)); }
 };
 const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch(e){} };
+
+/* ---------------- background music ---------------- */
+/* A short original loop, synthesized live with the same oscillator technique as
+   the SFX above — no audio file, so nothing to license and nothing added to
+   page weight. Runs under the single SOUND toggle, same as every other sound
+   here; there's no separate music control. */
+const Music = (() => {
+  const BPM = 116, BEAT = 60 / BPM;
+  // I - V - vi - IV in C major, one bar per chord, four-bar loop.
+  const CHORDS = [
+    [130.81, 164.81, 196.00], // C3 E3 G3
+    [98.00,  123.47, 146.83], // G2 B2 D3
+    [110.00, 130.81, 164.81], // A2 C3 E3
+    [87.31,  110.00, 130.81], // F2 A2 C3
+  ];
+  const SCALE = [523.25, 587.33, 659.25, 698.46, 783.99, 880.00, 987.77, 1046.50]; // C5..C6
+  const HOOK = [0,2,4,2, 1,3,5,3, 0,2,4,5, 3,2,1,0].map(i => SCALE[i]);
+
+  let timer = 0, beatIdx = 0, playing = false, bus = null;
+
+  function getBus(ctx){
+    if (!bus){ bus = ctx.createGain(); bus.gain.value = 0.5; bus.connect(ctx.destination); }
+    return bus;
+  }
+  function note(ctx, dest, freq, t0, dur, type, vol){
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + .03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(dest); o.start(t0); o.stop(t0 + dur + .05);
+  }
+  function tick(){
+    if (!playing) return;
+    const ctx = ac();
+    if (ctx){
+      const dest = getBus(ctx), t0 = ctx.currentTime + .05;
+      const bar = Math.floor(beatIdx / 4) % CHORDS.length;
+      if (beatIdx % 4 === 0) for (const f of CHORDS[bar]) note(ctx, dest, f, t0, BEAT*4*.95, 'sine', .045);
+      note(ctx, dest, HOOK[beatIdx % HOOK.length], t0, BEAT*.85, 'triangle', .05);
+      beatIdx++;
+    }
+    timer = setTimeout(tick, BEAT * 1000);
+  }
+  return {
+    start(){
+      if (playing || !P.sound) return;
+      const ctx = ac(); if (!ctx) return;
+      if (ctx.state === 'suspended') ctx.resume();
+      playing = true;
+      tick();
+    },
+    stop(){ playing = false; clearTimeout(timer); },
+    setEnabled(on){ on ? this.start() : this.stop(); }
+  };
+})();
+// Autoplay policy needs a real gesture — the first tap anywhere starts it.
+document.addEventListener('pointerdown', function unlockMusic(){
+  document.removeEventListener('pointerdown', unlockMusic);
+  Music.start();
+}, {once: true});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) Music.stop(); else Music.start();
+});
 
 /* ---------------- global state ---------------- */
 const AVATARS = ['🦊','🐼','🦄','🐸','🐯','🐙','🦁','🐨','🐷','🐵','🦖','🐳'];
@@ -736,7 +801,7 @@ function refreshHome(){
     ? `Best round: ${best} pts · ${games} game${games===1?'':'s'} played`
     : 'Find words. Longer = more points!';
 }
-$('btn-sound').addEventListener('click', () => { P.sound = !P.sound; store.set('sound', P.sound); refreshHome(); if (P.sound) snd.tick(3); });
+$('btn-sound').addEventListener('click', () => { P.sound = !P.sound; store.set('sound', P.sound); refreshHome(); Music.setEnabled(P.sound); if (P.sound) snd.tick(3); });
 $('btn-host').addEventListener('click', () => hostParty());
 $('btn-join').addEventListener('click', () => { $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80); });
 $('btn-join-back').addEventListener('click', () => show('home'));
@@ -1473,7 +1538,7 @@ function roundOver(wasSpectating){
   // my round summary
   let best = null;
   for (const [w,p] of G.found) if (!best || p > best[1] || (p === best[1] && w.length > best[0].length)) best = [w,p];
-  const fin = {r: G.round, s: G.score, w: G.found.size, b: best ? best[0] : '', bp: best ? best[1] : 0};
+  const fin = {r: G.round, s: G.score, w: G.found.size, b: best ? best[0] : '', bp: best ? best[1] : 0, words: [...G.found.keys()]};
   if (!wasSpectating){
     G.finsSelf[G.round] = fin;
     if (G.score > store.get('best',0)) store.set('best', G.score);
@@ -1498,12 +1563,41 @@ function maybeFinishCollection(){ // a straggler's report arrived — refresh wh
   if ($('scr-podium').classList.contains('active')) renderPodium();
 }
 
+function roundReports(round){
+  const out = [];
+  for (const [id, p] of everyone()){
+    const f = p.me ? G.finsSelf[round] : p.fin && p.fin[round];
+    if (f && f.words) out.push({id, f});
+  }
+  return out;
+}
+/* Netflix Boggle Party's "unique word" bonus: a word only YOU found this round
+   scores double. That needs everyone's word list, so it only ever touches
+   round-end totals — never the live in-round score, matching "no bonus for
+   finding words faster." Every phone runs this over the same reported lists,
+   so it lands on the same number everywhere without a scorekeeper, and it
+   updates as stragglers report in, same as every other "pending" stat here.
+   With nobody else to compare against (solo, or alone in a party room), it
+   falls back to the plain score — the bonus is a "with friends" feature. */
+function roundBreakdown(f, reports){
+  if (reports.length < 2) return {score: f.s, unique: 0};
+  const counts = new Map();
+  for (const r of reports) for (const w of r.f.words) counts.set(w, (counts.get(w)||0) + 1);
+  let score = 0, unique = 0;
+  for (const w of f.words){
+    const solo = counts.get(w) === 1;
+    if (solo) unique++;
+    score += scoreFor(w) * (solo ? 2 : 1);
+  }
+  return {score, unique};
+}
+function roundScore(f, round){ return f.words ? roundBreakdown(f, roundReports(round)).score : f.s; }
 function totalsFor(id, p){
   let total = 0;
   const rounds = G.cfg.r;
   for (let r=0;r<rounds;r++){
     const f = p.me ? G.finsSelf[r] : p.fin && p.fin[r];
-    if (f) total += f.s;
+    if (f) total += roundScore(f, r);
     else if (p.sc && p.sc[r]) total += p.sc[r];
   }
   return total;
@@ -1514,9 +1608,12 @@ function renderStandings(){
   $('local-extras').hidden = true;
   $('btn-share-daily').hidden = true;
   $('btn-stand-again').hidden = true;
+  const reports = roundReports(G.round);
   const rows = everyone().map(([id,p]) => {
     const f = p.me ? G.finsSelf[G.round] : p.fin && p.fin[G.round];
-    return {id, p, f, score: f ? f.s : (p.sc && p.sc[G.round]) || 0, total: totalsFor(id,p)};
+    const bd = f && f.words ? roundBreakdown(f, reports) : null;
+    const score = bd ? bd.score : (f ? f.s : (p.sc && p.sc[G.round]) || 0);
+    return {id, p, f, bd, score, total: totalsFor(id,p)};
   }).sort((a,b) => b.score - a.score);
   const list = $('stand-list'); list.replaceChildren();
   rows.forEach((r,i) => {
@@ -1526,7 +1623,8 @@ function renderStandings(){
     row.appendChild(face);
     const info = el('div','info');
     info.appendChild(el('b','', r.p.me ? r.p.name + ' (you)' : r.p.name));
-    info.appendChild(el('small','', r.f && r.f.b ? 'best: ' + r.f.b.toUpperCase() + ' +' + r.f.bp + ' · ' + r.f.w + ' words' : (r.p.gone ? 'left the party' : r.f ? r.f.w + ' words' : 'finishing…')));
+    const unique = r.bd && r.bd.unique ? ' · ' + r.bd.unique + ' unique ⭐' : '';
+    info.appendChild(el('small','', r.f && r.f.b ? 'best: ' + r.f.b.toUpperCase() + ' +' + r.f.bp + ' · ' + r.f.w + ' words' + unique : (r.p.gone ? 'left the party' : r.f ? r.f.w + ' words' : 'finishing…')));
     row.appendChild(info);
     const pts = el('span','pts', String(r.score));
     if (G.cfg.r > 1){ const sm = el('small','',' · total ' + r.total); pts.appendChild(sm); }
