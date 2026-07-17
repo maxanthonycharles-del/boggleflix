@@ -190,6 +190,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .hud-btn.sound{font-size:15px}
 .round-pill{font-family:var(--display);font-weight:800;font-size:14px;color:#fff;background:rgba(30,42,94,.35);border-radius:999px;padding:5px 12px;white-space:nowrap}
 .timer-wrap{flex:1;height:22px;background:rgba(30,42,94,.3);border-radius:999px;overflow:hidden;position:relative}
+.timer-wrap.warn{animation:timerwarn .5s ease 3}
+@keyframes timerwarn{50%{transform:scale(1.06);box-shadow:0 0 0 3px rgba(255,71,87,.6)}}
 .timer-fill{position:absolute;inset:0;width:100%;border-radius:inherit;background:linear-gradient(90deg,#00C566,#7DE33C);transition:background .4s ease}
 .timer-fill.mid{background:linear-gradient(90deg,#FFB302,#FFD93C)}
 .timer-fill.low{background:linear-gradient(90deg,#FF4757,#FF7A1A)}
@@ -417,7 +419,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     <div class="hud">
       <button class="hud-btn" id="btn-game-exit" aria-label="Leave the game">✕</button>
       <span class="round-pill" id="round-pill">R1/3</span>
-      <div class="timer-wrap"><div class="timer-fill" id="timer-fill"></div><div class="timer-num" id="timer-num">1:30</div></div>
+      <div class="timer-wrap" id="timer-wrap"><div class="timer-fill" id="timer-fill"></div><div class="timer-num" id="timer-num">1:30</div></div>
       <button class="hud-btn sound" id="btn-game-sound" aria-label="Toggle sound">🔊</button>
       <span class="my-score" id="my-score">0</span>
     </div>

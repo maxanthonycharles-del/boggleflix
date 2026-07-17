@@ -197,7 +197,9 @@ const snd = {
   beep(){ tone(880,.1,'square',.05); },
   go(){ tone(523,.12,'square',.07); tone(1047,.25,'square',.06,.1); },
   up(){ tone(523,.1,'sine',.09); tone(659,.1,'sine',.09,.09); tone(784,.1,'sine',.09,.18); tone(1047,.3,'sine',.09,.27); },
-  fanfare(){ [523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,.16,'triangle',.09,i*.11)); }
+  fanfare(){ [523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,.16,'triangle',.09,i*.11)); },
+  // "10 seconds left" — two urgent beeps, louder than the rest so it cuts through.
+  warn(){ tone(988,.13,'square',.12); tone(988,.16,'square',.12,.22); }
 };
 const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch(e){} };
 
@@ -852,6 +854,7 @@ function beginRound(){
   G.board = genBoard(G.seeds[G.round], G.n);
   G.path = []; G.found = new Map(); G.score = 0; G.possible = null;
   G.playing = false;
+  G.warned = false;
   G.totalMs = DEV ? 25000 : G.cfg.t * 1000;
 
   renderBoard();
@@ -939,6 +942,13 @@ function tickTimer(){
   $('timer-fill').style.width = (pct*100) + '%';
   $('timer-fill').className = 'timer-fill' + (pct < .2 ? ' low' : pct < .5 ? ' mid' : '');
   $('timer-num').textContent = fmtTime(left);
+  // One-time heads-up as the clock crosses 10 seconds (skip if the round is
+  // barely longer than that to begin with).
+  if (!G.warned && left <= 10000 && G.totalMs > 12000){
+    G.warned = true;
+    snd.warn(); buzz([40,60,40]);
+    $('timer-wrap').classList.remove('warn'); void $('timer-wrap').offsetWidth; $('timer-wrap').classList.add('warn');
+  }
   if (left <= 0){ roundOver(false); return; }
   G.raf = requestAnimationFrame(tickTimer);
 }

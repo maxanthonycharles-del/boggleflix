@@ -190,6 +190,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .hud-btn.sound{font-size:15px}
 .round-pill{font-family:var(--display);font-weight:800;font-size:14px;color:#fff;background:rgba(30,42,94,.35);border-radius:999px;padding:5px 12px;white-space:nowrap}
 .timer-wrap{flex:1;height:22px;background:rgba(30,42,94,.3);border-radius:999px;overflow:hidden;position:relative}
+.timer-wrap.warn{animation:timerwarn .5s ease 3}
+@keyframes timerwarn{50%{transform:scale(1.06);box-shadow:0 0 0 3px rgba(255,71,87,.6)}}
 .timer-fill{position:absolute;inset:0;width:100%;border-radius:inherit;background:linear-gradient(90deg,#00C566,#7DE33C);transition:background .4s ease}
 .timer-fill.mid{background:linear-gradient(90deg,#FFB302,#FFD93C)}
 .timer-fill.low{background:linear-gradient(90deg,#FF4757,#FF7A1A)}
@@ -417,7 +419,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     <div class="hud">
       <button class="hud-btn" id="btn-game-exit" aria-label="Leave the game">✕</button>
       <span class="round-pill" id="round-pill">R1/3</span>
-      <div class="timer-wrap"><div class="timer-fill" id="timer-fill"></div><div class="timer-num" id="timer-num">1:30</div></div>
+      <div class="timer-wrap" id="timer-wrap"><div class="timer-fill" id="timer-fill"></div><div class="timer-num" id="timer-num">1:30</div></div>
       <button class="hud-btn sound" id="btn-game-sound" aria-label="Toggle sound">🔊</button>
       <span class="my-score" id="my-score">0</span>
     </div>
@@ -694,7 +696,9 @@ const snd = {
   beep(){ tone(880,.1,'square',.05); },
   go(){ tone(523,.12,'square',.07); tone(1047,.25,'square',.06,.1); },
   up(){ tone(523,.1,'sine',.09); tone(659,.1,'sine',.09,.09); tone(784,.1,'sine',.09,.18); tone(1047,.3,'sine',.09,.27); },
-  fanfare(){ [523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,.16,'triangle',.09,i*.11)); }
+  fanfare(){ [523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,.16,'triangle',.09,i*.11)); },
+  // "10 seconds left" — two urgent beeps, louder than the rest so it cuts through.
+  warn(){ tone(988,.13,'square',.12); tone(988,.16,'square',.12,.22); }
 };
 const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch(e){} };
 
@@ -1349,6 +1353,7 @@ function beginRound(){
   G.board = genBoard(G.seeds[G.round], G.n);
   G.path = []; G.found = new Map(); G.score = 0; G.possible = null;
   G.playing = false;
+  G.warned = false;
   G.totalMs = DEV ? 25000 : G.cfg.t * 1000;
 
   renderBoard();
@@ -1436,6 +1441,13 @@ function tickTimer(){
   $('timer-fill').style.width = (pct*100) + '%';
   $('timer-fill').className = 'timer-fill' + (pct < .2 ? ' low' : pct < .5 ? ' mid' : '');
   $('timer-num').textContent = fmtTime(left);
+  // One-time heads-up as the clock crosses 10 seconds (skip if the round is
+  // barely longer than that to begin with).
+  if (!G.warned && left <= 10000 && G.totalMs > 12000){
+    G.warned = true;
+    snd.warn(); buzz([40,60,40]);
+    $('timer-wrap').classList.remove('warn'); void $('timer-wrap').offsetWidth; $('timer-wrap').classList.add('warn');
+  }
   if (left <= 0){ roundOver(false); return; }
   G.raf = requestAnimationFrame(tickTimer);
 }
