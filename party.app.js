@@ -44,7 +44,7 @@ const rngFromSeed = seed => mulberry32(xmur3(seed)());
 const DICE4 = ["AAEEGN","ABBJOO","ACHOPS","AFFKPS","AOOTTW","CIMOTU","DEILRX","DELRVY",
   "DISTTY","EEGHNW","EEINSU","EHRTVW","EIOSST","ELRTTY","HIMNQU","HLNNRZ"];
 const DICE5 = ["AAAFRS","AAEEEE","AAFIRS","ADENNN","AEEEEM","AEEGMU","AEGMNN","AFIRSY",
-  "BJKQXZ","CCNSTW","CEIILT","CEILPT","CEIPST","DDLNOR","DHHLOR","DHHNOT","DHLNOR",
+  "BJKQXZ","CCNSTW","CEIILT","CEILPT","CEIPST","DDLNOR","DDHNOT","DHHLOR","DHLNOR",
   "EIIITT","EMOTTT","ENSSSU","FIPRSY","GORRVW","HIPRRY","NOOTUW","OOOTTU"];
 // The real 6×6 set (Super Big Boggle) has one cube reading QU/AN/IN/TH/ER/HE.
 // Two-letter tiles read as a mistake to players, so that cube is a plain
@@ -171,8 +171,13 @@ function solveBoard(board, n, minLen){
   for (let i=0;i<n*n;i++) walk(i, root, '');
   return results;
 }
-// Netflix Boggle Party's table: 3=1, 4=2, 5=3, +1 per letter beyond that.
-function scoreFor(w){ return w.length - 2; }
+// Real Boggle's table: 3–4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11.
+// Super Big Boggle (6×6) additionally pays 2 points per letter at 9+.
+function scoreFor(w){
+  const L = w.length;
+  if (L >= 9 && G.cfg.g === 6) return L * 2;
+  return L >= 8 ? 11 : L === 7 ? 5 : L === 6 ? 3 : L === 5 ? 2 : 1;
+}
 
 /* ---------------- sound / haptics ---------------- */
 let AC = null;
@@ -318,7 +323,7 @@ const G = {   // current game context
   isHost: false,
   peers: new Map(),    // peerId -> {name, emoji, joinedAt, host, gone, sc:{round:score}, fin:{round:{...}}}
   joinedAt: 0,
-  cfg: store.get('cfg', {g:4, t:90, m:3, r:3}),
+  cfg: store.get('cfg', {g:4, t:180, m:3, r:3}),
   seeds: [],
   round: 0,
   startAt: 0,
@@ -504,7 +509,7 @@ function connect(code, asHost){
   G.mode = 'party'; G.code = code; G.isHost = asHost; G.joinedAt = Date.now();
   G.peers = new Map(); G.finsSelf = {}; G.round = 0; G.seeds = [];
   G.spectating = false; G.seq = 0;
-  if (asHost) G.cfg = store.get('cfg', {g:4, t:90, m:3, r:3});
+  if (asHost) G.cfg = store.get('cfg', {g:4, t:180, m:3, r:3});
 
   // More relays than the default 5 — each one is an extra chance for two phones
   // to find each other, which is what makes joiners show up reliably.
@@ -613,10 +618,13 @@ window.addEventListener('pagehide', leaveNet);
 
 function sanitizeCfg(d){
   const pick = (v, list, dflt) => list.includes(v) ? v : dflt;
+  const g = pick(+d.g, [4,5,6], 4);
   return {
-    g: pick(+d.g, [4,5,6], 4),
-    t: pick(+d.t, [30,60,90,120,180], 90),
-    m: pick(+d.m, [3,4,5,6], 3),
+    g,
+    t: pick(+d.t, [30,60,90,120,180], 180),
+    // Real Boggle: 3-letter words count on 4×4, but the bigger boards
+    // (Big/Super Big Boggle) require 4 letters.
+    m: pick(+d.m, [3,4,5,6], g === 4 ? 3 : 4),
     r: pick(+d.r, [1,3,5], 3)
   };
 }
@@ -755,6 +763,9 @@ SEGS.forEach(([segId, key]) => {
   $(segId).querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
     if (G.mode === 'party' && !G.isHost) return;
     G.cfg[key] = +b.dataset.v;
+    // Picking a grid resets the word minimum to that board's real Boggle rule
+    // (3 letters on 4×4, 4 on the big boards) — still overridable after.
+    if (key === 'g') G.cfg.m = G.cfg.g === 4 ? 3 : 4;
     store.set('cfg', G.cfg);
     renderSettings();
     snd.tick(1);
@@ -794,6 +805,9 @@ function handleStart(d){
   G.clockOffset = (d.hostNow || Date.now()) - Date.now();
   G.startAt = (d.startAt || Date.now()) - G.clockOffset;
   G.finsSelf = {};
+  // A fresh game: drop any scores merged from a previous one, or they would
+  // bleed into the new totals (scores merge by max, so they never shrink).
+  for (const [,p] of G.peers){ p.sc = {}; p.fin = {}; }
   beginRound();
 }
 function hostNextRound(){
@@ -830,10 +844,10 @@ function startLocal(mode){
   leaveNet();
   G.mode = mode; G.code = null; G.isHost = true; G.peers = new Map(); G.finsSelf = {};
   if (mode === 'daily'){
-    G.cfg = {g:4, t:90, m:3, r:1};
+    G.cfg = {g:4, t:180, m:3, r:1};
     G.seeds = ['bfp-daily-' + todayKey()];
   } else {
-    G.cfg = sanitizeCfg(store.get('cfg', {g:4, t:90, m:3, r:1}));
+    G.cfg = sanitizeCfg(store.get('cfg', {g:4, t:180, m:3, r:1}));
     G.cfg.r = 1;
     G.seeds = ['bfp-solo-' + Date.now() + '-' + Math.random()];
   }
@@ -847,7 +861,6 @@ let tileEls = [];
 const boardEl = $('board'), pathSvg = $('path-svg'), pill = $('word-pill');
 function beginRound(){
   ensureDict();
-  const late = Date.now() > G.startAt - 400;
   G.spectating = G.mode === 'party' && Date.now() > G.startAt + 3000;
   G.n = G.cfg.g;
   G.adj = adjacency(G.n);
@@ -870,7 +883,9 @@ function beginRound(){
   show('game');
   fitTiles(); // now the board has a size, so the letters can be scaled to it
   requestWake();
-  store.set('games', store.get('games',0) + 1);
+  // One game = one seed set, so count it once — on round 1, and only if
+  // actually playing (a mid-round joiner spectates this round).
+  if (G.round === 0 && !G.spectating) store.set('games', store.get('games',0) + 1);
 
   // background solve for results
   setTimeout(() => { if (!G.possible) G.possible = solveBoard(G.board, G.n, G.cfg.m); }, 1200);
@@ -1197,25 +1212,30 @@ function roundReports(round){
   }
   return out;
 }
-/* Netflix Boggle Party's "unique word" bonus: a word only YOU found this round
-   scores double. That needs everyone's word list, so it only ever touches
-   round-end totals — never the live in-round score, matching "no bonus for
-   finding words faster." Every phone runs this over the same reported lists,
-   so it lands on the same number everywhere without a scorekeeper, and it
-   updates as stragglers report in, same as every other "pending" stat here.
-   With nobody else to compare against (solo, or alone in a party room), it
-   falls back to the plain score — the bonus is a "with friends" feature. */
+/* Real Boggle's duplicate rule: a word found by two or more players is crossed
+   out and scores NOTHING for anyone — only words nobody else found count.
+   That needs everyone's word list, so it only ever touches round-end totals,
+   never the live in-round score (which stays provisional, like the paper game
+   before comparing lists). Every phone runs this over the same reported
+   lists, so it lands on the same number everywhere without a scorekeeper, and
+   it updates as stragglers report in, same as every other "pending" stat.
+   With nobody to compare against (solo, or alone in a party room), every word
+   simply counts. `best` is the top-scoring word that actually counted. */
 function roundBreakdown(f, reports){
-  if (reports.length < 2) return {score: f.s, unique: 0};
+  if (reports.length < 2){
+    return {score: f.s, unique: 0, vs: false, best: f.b ? {w: f.b, p: f.bp} : null};
+  }
   const counts = new Map();
   for (const r of reports) for (const w of r.f.words) counts.set(w, (counts.get(w)||0) + 1);
-  let score = 0, unique = 0;
+  let score = 0, unique = 0, best = null;
   for (const w of f.words){
-    const solo = counts.get(w) === 1;
-    if (solo) unique++;
-    score += scoreFor(w) * (solo ? 2 : 1);
+    if (counts.get(w) !== 1) continue;
+    unique++;
+    const p = scoreFor(w);
+    score += p;
+    if (!best || p > best.p || (p === best.p && w.length > best.w.length)) best = {w, p};
   }
-  return {score, unique};
+  return {score, unique, vs: true, best};
 }
 function roundScore(f, round){ return f.words ? roundBreakdown(f, roundReports(round)).score : f.s; }
 function totalsFor(id, p){
@@ -1249,8 +1269,16 @@ function renderStandings(){
     row.appendChild(face);
     const info = el('div','info');
     info.appendChild(el('b','', r.p.me ? r.p.name + ' (you)' : r.p.name));
-    const unique = r.bd && r.bd.unique ? ' · ' + r.bd.unique + ' unique ⭐' : '';
-    info.appendChild(el('small','', r.f && r.f.b ? 'best: ' + r.f.b.toUpperCase() + ' +' + r.f.bp + ' · ' + r.f.w + ' words' + unique : (r.p.gone ? 'left the party' : r.f ? r.f.w + ' words' : 'finishing…')));
+    let sub;
+    if (!r.f) sub = r.p.gone ? 'left the party' : 'finishing…';
+    else if (r.bd && r.bd.vs){
+      // Head-to-head round: only words nobody else found scored.
+      sub = r.bd.best
+        ? 'best: ' + r.bd.best.w.toUpperCase() + ' +' + r.bd.best.p + ' · ' + r.bd.unique + ' of ' + r.f.w + ' words scored'
+        : (r.f.w ? r.f.w + ' words — all found by others!' : 'no words this round');
+    }
+    else sub = r.f.b ? 'best: ' + r.f.b.toUpperCase() + ' +' + r.f.bp + ' · ' + r.f.w + ' words' : r.f.w + ' words';
+    info.appendChild(el('small','', sub));
     row.appendChild(info);
     const pts = el('span','pts', String(r.score));
     if (G.cfg.r > 1){ const sm = el('small','',' · total ' + r.total); pts.appendChild(sm); }
@@ -1344,7 +1372,6 @@ function renderPodium(){
       const f = r.p.me ? G.finsSelf[rd] : r.p.fin && r.p.fin[rd];
       if (!f) continue;
       if (f.b && (!longest || f.b.length > longest.word.length)) longest = {name:r.p.name, word:f.b};
-      if (!most || f.w > most.count){ /* accumulate below */ }
     }
     const words = (() => { let s=0; for (let rd=0;rd<G.cfg.r;rd++){ const f = r.p.me ? G.finsSelf[rd] : r.p.fin && r.p.fin[rd]; if (f) s += f.w; } return s; })();
     if (!most || words > most.count) most = {name:r.p.name, count:words};

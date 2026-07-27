@@ -35,9 +35,11 @@ with a counter it alone increments, so relayed copies are recognisable as old
 news and someone who leaves actually ages out instead of being echoed back
 forever.
 
-Words are checked against the public-domain ENABLE list (3–8 letters,
-family-filtered, ~79k words), embedded in the page — validation is instant and
-offline.
+Words are checked against the public-domain ENABLE list (3+ letters, no upper
+cap — real Boggle has none, and 8+ letter words are the jackpots),
+family-filtered with word-boundary awareness (~172k words), embedded in the
+page — validation is instant and offline. Regenerate with
+`python3 assets/make_dict.py` (reads `assets/enable1.txt`).
 
 Dice follow the real sets, with one deliberate exception: the 6×6 Super Big
 Boggle set has a cube reading QU/AN/IN/TH/ER/HE, and those two-letter tiles read
@@ -46,15 +48,22 @@ only tile that is ever two characters — every set has it, and a bare Q is a de
 tile without it.
 
 ## Scoring
-3-letter word = 1 point, 4 = 2, 5 = 3, +1 per letter after that. No bonus for
-speed, no penalty for a rejected word (rejected words just don't score).
+Real Boggle's table: 3–4 letters = 1 point, 5 = 2, 6 = 3, 7 = 5, 8+ = 11. On
+the 6×6 board, words of 9+ letters score 2 points per letter (Super Big Boggle
+rule). No bonus for speed, no penalty for a rejected word (rejected words just
+don't score).
 
-In Party Mode, a word only *you* found that round scores double — Netflix
-Boggle Party's "unique word" bonus. That needs to see everyone's word list, so
-it settles once round results are in, not during live play; every phone
-computes it from the same reported lists and lands on the same total without a
-scorekeeper. Solo and Daily never apply it — there's no one to be unique
-against.
+Party Mode also plays real Boggle's duplicate rule: a word that two or more
+players found is crossed out and scores nothing for anyone — only words nobody
+else found count. That needs to see everyone's word list, so in-round scores
+are provisional and settle once round results are in (just like comparing
+lists in the paper game); every phone computes it from the same reported lists
+and lands on the same total without a scorekeeper. Solo and Daily have no one
+to clash with — every valid word counts.
+
+Defaults follow the real game too: 3-minute rounds, minimum word length 3 on
+4×4 and 4 on the bigger boards (picking a grid size resets the minimum to that
+board's rule; the host can still override it).
 
 ## Music
 A short original loop plays under everything, synthesized live in the browser
