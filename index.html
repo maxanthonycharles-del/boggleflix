@@ -1772,9 +1772,10 @@ function renderStandings(){
     if (!r.f) sub = r.p.gone ? 'left the party' : 'finishing…';
     else if (r.bd && r.bd.vs){
       // Head-to-head round: only words nobody else found scored.
+      const wn = r.f.w === 1 ? '1 word' : r.f.w + ' words';
       sub = r.bd.best
-        ? 'best: ' + r.bd.best.w.toUpperCase() + ' +' + r.bd.best.p + ' · ' + r.bd.unique + ' of ' + r.f.w + ' words scored'
-        : (r.f.w ? r.f.w + ' words — all found by others!' : 'no words this round');
+        ? 'best: ' + r.bd.best.w.toUpperCase() + ' +' + r.bd.best.p + ' · ' + r.bd.unique + ' of ' + wn + ' scored'
+        : (r.f.w ? wn + ' — all found by others!' : 'no words this round');
     }
     else sub = r.f.b ? 'best: ' + r.f.b.toUpperCase() + ' +' + r.f.bp + ' · ' + r.f.w + ' words' : r.f.w + ' words';
     info.appendChild(el('small','', sub));
