@@ -306,7 +306,7 @@ const GOSSIP_TTL = 14000; // forget an indirect peer nobody has mentioned this l
 const DEV = /[?#&]dev\b/.test(location.href);
 
 /* ---------------- screens / toast / overlay ---------------- */
-const SCREENS = ['name','home','join','lobby','game','standings','podium'];
+const SCREENS = ['name','home','join','lobby','game','standings','reveal','podium'];
 function show(name){
   SCREENS.forEach(s => $('scr-'+s).classList.toggle('active', s === name));
   $('confirm-exit').hidden = true; // never let a dialog outlive its screen
@@ -703,6 +703,7 @@ function stopRound(){
 }
 function quitToHome(){
   stopRound();
+  clearReveal();
   clearSel();
   leaveNet();
   G.mode = null; G.code = null; G.seeds = []; G.round = 0;
@@ -826,6 +827,7 @@ function handleNext(d){
   beginRound();
 }
 function resetToLobby(){
+  clearReveal();
   G.seeds = []; G.round = 0; G.finsSelf = {};
   for (const [,p] of G.peers){ p.sc = {}; p.fin = {}; }
   G.playing = false;
@@ -864,6 +866,7 @@ let tileEls = [];
 const boardEl = $('board'), pathSvg = $('path-svg'), pill = $('word-pill');
 function beginRound(){
   ensureDict();
+  clearReveal();
   $('scr-game').classList.remove('final-countdown');  // clear any leftover pulse
   G.beganKey = (G.gameId || '?') + ':' + G.round;  // ignore host's re-broadcasts of this round
   G.spectating = G.mode === 'party' && Date.now() > G.startAt + 3000;
@@ -1206,7 +1209,11 @@ function roundOver(wasSpectating){
 function routeAfterRound(){
   const last = G.round >= G.cfg.r - 1;
   if (G.mode !== 'party'){ renderLocalResults(); show('standings'); return; }
-  if (last){ renderPodium(); show('podium'); snd.fanfare(); confettiBurst(); }
+  if (last){
+    // Real-Boggle-style finale: a leaderboard where each player's score counts
+    // up as their words are revealed, then the podium.
+    runReveal(() => { renderPodium(); show('podium'); snd.fanfare(); confettiBurst(); });
+  }
   else { renderStandings(); show('standings'); }
 }
 function maybeFinishCollection(){ // a straggler's report arrived — refresh whichever results screen is up
@@ -1346,6 +1353,102 @@ $('btn-share-daily').addEventListener('click', async () => {
 });
 
 /* ---------------- podium ---------------- */
+/* Every word this player played across the whole game, each flagged as scored
+   (nobody else in its round found it — real Boggle's duplicate rule) or a
+   cancelled duplicate. Ordered biggest-scorer first so the count-up ramps up,
+   duplicates trailing. The scored points sum to the player's grand total. */
+function revealItemsFor(p){
+  const items = [];
+  for (let r = 0; r < G.cfg.r; r++){
+    const f = p.me ? G.finsSelf[r] : (p.fin && p.fin[r]);
+    if (!f || !f.words) continue;
+    const reports = roundReports(r);
+    let counts = null;
+    if (reports.length >= 2){
+      counts = new Map();
+      for (const rr of reports) for (const w of rr.f.words) counts.set(w, (counts.get(w)||0) + 1);
+    }
+    for (const w of f.words){
+      const scored = !counts || counts.get(w) === 1;
+      items.push({w, scored, pts: scored ? scoreFor(w) : 0});
+    }
+  }
+  items.sort((a,b) => (b.scored - a.scored) || (b.pts - a.pts) || a.w.localeCompare(b.w));
+  return items;
+}
+let revealTimers = [];
+function clearReveal(){ revealTimers.forEach(clearTimeout); revealTimers = []; }
+function runReveal(done){
+  clearReveal();
+  const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p), items: revealItemsFor(p)}))
+    .sort((a,b) => b.total - a.total);  // leaderboard: winner on top
+  const listEl = $('reveal-list'); listEl.replaceChildren();
+  const cards = rows.map(r => {
+    const card = el('div','rv-card');
+    const top = el('div','rv-top');
+    const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
+    top.appendChild(face);
+    top.appendChild(el('b','rv-name', r.p.me ? r.p.name + ' (you)' : r.p.name));
+    const score = el('span','rv-score','0');
+    top.appendChild(score);
+    card.appendChild(top);
+    const words = el('div','rv-words');
+    card.appendChild(words);
+    listEl.appendChild(card);
+    return {r, card, score, words, shown: 0};
+  });
+  $('reveal-sub').textContent = 'Counting up everyone’s words…';
+  show('reveal');
+
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const at = (ms, fn) => revealTimers.push(setTimeout(fn, ms));
+
+  if (reduced){
+    // No animation: land on the final numbers, then straight to the podium.
+    cards.forEach(c => {
+      c.score.textContent = String(c.r.total);
+      c.card.classList.add('done');
+      c.r.items.forEach(it => c.words.appendChild(chipFor(it)));
+    });
+    at(900, done);
+    return;
+  }
+
+  // Spotlight moves bottom (lowest rank) up to the winner, building suspense.
+  let t = 400;
+  for (let ci = cards.length - 1; ci >= 0; ci--){
+    const c = cards[ci];
+    const items = c.r.items;
+    const iv = items.length ? Math.max(55, Math.min(150, Math.round(950 / items.length))) : 0;
+    at(t, () => { c.card.classList.add('active'); c.card.scrollIntoView({block:'center', behavior:'smooth'}); });
+    let running = 0, tick = 0;
+    if (!items.length){
+      at(t + 250, () => c.words.appendChild(el('span','rv-none','no words this game')));
+    }
+    items.forEach((it, k) => {
+      at(t + 200 + k * iv, () => {
+        c.words.appendChild(chipFor(it));
+        if (it.scored){
+          running += it.pts;
+          c.score.textContent = String(running);
+          c.score.classList.remove('bump'); void c.score.offsetWidth; c.score.classList.add('bump');
+          snd.tick(++tick);
+        } else { snd.dupe(); }
+      });
+    });
+    const dwell = 200 + items.length * iv + 500;
+    at(t + dwell - 250, () => { c.card.classList.remove('active'); c.card.classList.add('done'); });
+    t += dwell;
+  }
+  $('reveal-sub').textContent = 'And the winner is…';
+  at(t + 500, done);
+}
+function chipFor(it){
+  const chip = el('span','rv-chip ' + (it.scored ? 'scored' : 'dup'), it.w.toUpperCase());
+  if (it.scored) chip.appendChild(el('b','','+'+it.pts));
+  return chip;
+}
+
 function renderPodium(){
   if (G.mode !== 'party') return;
   const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p)})).sort((a,b) => b.total - a.total);

@@ -282,6 +282,30 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .stand-row.me{outline:3px solid var(--blue)}
 .stand-row.pending{opacity:.55}
 .stand-cta{display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:10px}
+
+/* ---------- SCORE REVEAL (end-of-game, Boggle-style count-up) ---------- */
+#scr-reveal{overflow-y:auto}
+.reveal-list{display:flex;flex-direction:column;gap:10px;padding-bottom:8px}
+.rv-card{background:var(--white);border-radius:18px;padding:11px 14px 12px;box-shadow:0 4px 0 rgba(30,42,94,.16);
+  opacity:.5;transform:scale(.98);transition:opacity .3s ease,transform .3s ease,box-shadow .3s ease}
+.rv-card.active{opacity:1;transform:scale(1);box-shadow:0 5px 0 var(--gold-edge),0 0 0 3px var(--gold)}
+.rv-card.done{opacity:1;transform:scale(1)}
+.rv-top{display:flex;align-items:center;gap:11px}
+.rv-top .face{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:22px;background:#fff;border:3px solid var(--c,#3B82F6);flex:0 0 auto}
+.rv-name{font-family:var(--display);font-weight:800;font-size:16.5px;color:var(--navy);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-score{font-family:var(--display);font-weight:800;font-size:26px;color:var(--navy);font-variant-numeric:tabular-nums}
+.rv-score.bump{animation:rvbump .28s ease}
+@keyframes rvbump{40%{transform:scale(1.35);color:var(--green-edge)}}
+.rv-words{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.rv-words:empty{margin-top:0}
+.rv-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:999px;padding:5px 10px 4px;
+  font-family:var(--display);font-weight:800;font-size:14px;animation:rvpop .22s cubic-bezier(.2,1.6,.4,1)}
+.rv-chip.scored{background:#D8F6E4;color:#0B7A3E}
+.rv-chip.scored b{color:#FF7A1A;font-size:11px}
+.rv-chip.dup{background:#EEECE4;color:#9A96A6;text-decoration:line-through;text-decoration-thickness:2px}
+.rv-none{font-size:12.5px;color:#9A96A6;font-weight:600;margin-top:7px}
+@keyframes rvpop{from{transform:scale(.4);opacity:0}}
+.rv-note{color:#fff;font-weight:600;font-size:12px;text-align:center;text-shadow:0 1px 0 rgba(150,15,72,.3);opacity:.85;padding-top:2px}
 .podium-stage{display:flex;align-items:flex-end;justify-content:center;gap:10px;padding:22px 0 0;min-height:220px}
 .pod{display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;max-width:110px;animation:podin .6s cubic-bezier(.2,1.5,.4,1) backwards}
 .pod .face{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:32px;background:#fff;border:4px solid var(--c,#3B82F6);box-shadow:0 4px 0 rgba(30,42,94,.25)}
@@ -465,6 +489,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
       <button class="btn purple" id="btn-stand-again" hidden>Play again</button>
       <button class="chip-btn" id="btn-stand-home" style="align-self:center">Back to menu</button>
     </div>
+  </section>
+
+  <!-- ============ SCORE REVEAL ============ -->
+  <section class="screen" id="scr-reveal">
+    <div class="stand-head">
+      <div class="h1" style="color:#fff;text-shadow:0 3px 0 rgba(30,42,94,.85)">📊 Scores!</div>
+      <div class="stand-sub" id="reveal-sub">Counting up everyone's words…</div>
+    </div>
+    <div class="reveal-list" id="reveal-list"></div>
+    <div class="rv-note" id="reveal-note">words two or more players found cancel out — just like real Boggle</div>
   </section>
 
   <!-- ============ PODIUM ============ -->
