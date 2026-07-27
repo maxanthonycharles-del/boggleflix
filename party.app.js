@@ -282,6 +282,8 @@ const G = {   // current game context
   cfg: store.get('cfg', {g:4, t:180, m:3, r:3}),
   seeds: [],
   round: 0,
+  gameId: null,        // random per game, so re-broadcast starts are recognisable
+  beganKey: null,      // gameId:round we've already entered — ignore repeats
   startAt: 0,
   clockOffset: 0,      // hostNow - myNow
   playing: false,
@@ -562,7 +564,13 @@ function connect(code, asHost){
 
   clearInterval(G.gossipTimer);
   G.gossipTimer = setInterval(() => {
-    if (G.net) G.net.A.sync.send(syncPayload());
+    if (!G.net) return;
+    G.net.A.sync.send(syncPayload());
+    // While the host is mid-round, keep re-announcing the round so any phone
+    // that missed the one-shot start (backgrounded, dropped packet, joined a
+    // beat late) gets pulled in within a few seconds instead of being stranded
+    // in the lobby. handleStart ignores it once you're already in the round.
+    if (G.isHost && G.playing) G.net.A.start.send(startPayload());
     // Keep the lobby's status line current (it mentions elapsed time when a
     // joiner is still alone) even when no network event triggers a render.
     if ($('scr-lobby').classList.contains('active')) renderLobbyPlayers();
@@ -772,10 +780,11 @@ $('btn-start').addEventListener('click', () => {
    GAME FLOW
    ================================================================ */
 function startPayload(){
-  return {seeds: G.seeds, cfg: G.cfg, round: G.round, startAt: G.startAt, hostNow: Date.now()};
+  return {gid: G.gameId, seeds: G.seeds, cfg: G.cfg, round: G.round, startAt: G.startAt, hostNow: Date.now()};
 }
 function hostStartGame(){
   const rnd = Math.random().toString(36).slice(2,8);
+  G.gameId = rnd;
   G.seeds = [];
   for (let i=0;i<G.cfg.r;i++) G.seeds.push('bfp-' + G.code + '-' + rnd + '-' + i);
   G.round = 0;
@@ -786,6 +795,13 @@ function hostStartGame(){
   beginRound();
 }
 function handleStart(d){
+  // The host re-broadcasts this every few seconds so a phone that missed the
+  // one-shot start (backgrounded, a dropped packet, joined a moment late) still
+  // gets pulled into the round. Ignore a repeat of a round we're already in, or
+  // it would restart the board and wipe the words we've found.
+  const key = (d.gid || '?') + ':' + (d.round || 0);
+  if (key === G.beganKey) return;
+  G.gameId = d.gid || G.gameId;
   G.seeds = d.seeds || [];
   G.cfg = sanitizeCfg(d.cfg || {});
   G.round = d.round || 0;
@@ -848,6 +864,8 @@ let tileEls = [];
 const boardEl = $('board'), pathSvg = $('path-svg'), pill = $('word-pill');
 function beginRound(){
   ensureDict();
+  $('scr-game').classList.remove('final-countdown');  // clear any leftover pulse
+  G.beganKey = (G.gameId || '?') + ':' + G.round;  // ignore host's re-broadcasts of this round
   G.spectating = G.mode === 'party' && Date.now() > G.startAt + 3000;
   G.n = G.cfg.g;
   G.adj = adjacency(G.n);
@@ -952,6 +970,9 @@ function tickTimer(){
     snd.warn(); buzz([40,60,40]);
     $('timer-wrap').classList.remove('warn'); void $('timer-wrap').offsetWidth; $('timer-wrap').classList.add('warn');
   }
+  // Whole-screen urgency pulse for the final stretch (only worthwhile on rounds
+  // long enough to have one). Cleared when the round ends / a new one begins.
+  if (G.totalMs > 12000) $('scr-game').classList.toggle('final-countdown', left <= 10000);
   if (left <= 0){ roundOver(false); return; }
   G.raf = requestAnimationFrame(tickTimer);
 }
@@ -1155,6 +1176,7 @@ function releaseWake(){ try { if (G.lock){ G.lock.release(); G.lock = null; } } 
 
 function roundOver(wasSpectating){
   G.playing = false;
+  $('scr-game').classList.remove('final-countdown');
   Music.stop(); // the song ends with the round — standings and podium are quiet
   cancelAnimationFrame(G.raf);
   (G.cdTimers||[]).forEach(clearTimeout);

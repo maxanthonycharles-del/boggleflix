@@ -182,6 +182,14 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 
 /* ---------- GAME ---------- */
 #scr-game{padding:10px 12px calc(8px + env(safe-area-inset-bottom));height:100vh;height:100dvh;overflow:hidden;gap:7px}
+/* Final 10 seconds: a deep-crimson vignette pulses in from the screen edges
+   once a second so the whole board feels the countdown, not just the timer bar.
+   Dark red (not pink) so it reads as urgency against the pink game background
+   and keeps the centre of the board clear and readable. */
+#scr-game.final-countdown::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:6;
+  animation:finalpulse 1s ease-in-out infinite}
+@keyframes finalpulse{0%,100%{box-shadow:inset 0 0 45px 0 rgba(75,0,22,.18)}
+  50%{box-shadow:inset 0 0 110px 30px rgba(75,0,22,.72)}}
 .hud{display:flex;align-items:center;gap:8px}
 .hud-btn{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
   font-family:var(--display);font-weight:800;font-size:15px;line-height:1;color:#fff;

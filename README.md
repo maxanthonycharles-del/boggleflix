@@ -18,22 +18,35 @@ either **Host a party** (share the 4-letter code) or **Join with a code**.
   scores in the family chat.
 - **Solo Practice** — free play.
 
-## How multiplayer works (no server!)
-Phones connect directly to each other with WebRTC, using
-[Trystero](https://github.com/dmotz/trystero) (nostr strategy) for signalling —
-so there is no game server and nothing to run or pay for. Boards are seeded
-deterministically per round. Whoever opens the room is the host, and if they
-leave the others agree on a replacement by lowest peer id (never by clock —
-phones disagree about the time). Works best with everyone on the same WiFi.
+## How multiplayer works (no server of our own!)
+Every phone opens a plain outbound secure WebSocket to a couple of public MQTT
+brokers and publishes/subscribes on a topic named after the 4-letter room code.
+All the game's messages (roster, board seed, live scores, round results) flow
+through that shared topic. There is no game server to run or pay for, and —
+crucially — **no phone-to-phone connection to negotiate**, so it works on any
+network: home WiFi, mobile data, or a mix, including routers with client
+isolation. We connect to two brokers at once and de-duplicate by message id, so
+one broker flaking doesn't drop the party.
 
-The mesh doesn't always connect every phone to every other phone, so presence
-and scores are **gossiped**: each phone re-broadcasts the whole roster and
-scoreboard every few seconds, and merges what it hears (scores by max, since
-they only grow). That way a player still shows up — and still scores — for
-people they never connected to directly. Each phone stamps its own broadcasts
-with a counter it alone increments, so relayed copies are recognisable as old
-news and someone who leaves actually ages out instead of being echoed back
-forever.
+> This replaced an earlier WebRTC/Trystero design. WebRTC needs a TURN relay
+> whenever two phones can't reach each other directly (different networks,
+> cellular, isolating routers), every free TURN server is now dead, and so those
+> players got stuck on "can't find the party". The MQTT message bus sidesteps
+> NAT traversal entirely. The bus lives in `assets/mqtt-bus.js` and exposes the
+> same small API the game already used (`joinRoom` / `makeAction` /
+> `onPeerJoin`), so the game logic was untouched.
+
+Boards are seeded deterministically per round. Whoever opens the room is the
+host, and if they leave the others agree on a replacement by lowest peer id
+(never by clock — phones disagree about the time).
+
+Presence and scores are **gossiped**: each phone re-broadcasts the whole roster
+and scoreboard every few seconds and merges what it hears (scores by max, since
+they only grow), so a player still shows up and still scores even if a message
+was missed. The host also re-broadcasts the round-start on that cadence, so a
+phone that missed the one-shot start (backgrounded, a dropped packet, joined a
+beat late) is pulled into the round within a few seconds instead of being
+stranded in the lobby.
 
 Words are checked against the public-domain ENABLE list (3+ letters, no upper
 cap — real Boggle has none, and 8+ letter words are the jackpots),
@@ -52,12 +65,10 @@ are shuffled into the grid and each shows a uniformly random face — no
 curation, no re-rolls. Vowel droughts and letter clumps are part of Boggle.
 Deterministic per seed, so every phone in a party sees the identical grid.
 
-Signalling is pinned to a fixed list of major public nostr relays (every phone
-uses the same list, so hosts and joiners always share relays), and a public
-TURN server carries the game traffic when two phones' networks won't allow a
-direct link (e.g. carrier NAT). Joining is one step: typing the 4th letter of
-the code joins immediately, and the lobby says plainly whether it's still
-connecting or the code should be double-checked.
+Joining is one step: typing the 4th letter of the code joins immediately, and
+the lobby says plainly whether it's still connecting or the code should be
+double-checked. In the last 10 seconds of a round the whole screen pulses a
+deep-crimson vignette so the countdown is felt, not just watched.
 
 ## Scoring
 Real Boggle's table: 3–4 letters = 1 point, 5 = 2, 6 = 3, 7 = 5, 8+ = 11. On

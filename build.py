@@ -6,7 +6,9 @@ to GitHub Pages).
 Sources:
   party.src.html  — markup + styles, with __BALOO__/__FREDOKA__/__VENDOR__/__APP__
   party.app.js    — game logic, with __DICT__
-  assets/         — dict.txt, baloo2.b64, fredoka.b64, trystero-nostr.bundle.js
+  assets/         — dict.txt, baloo2.b64, fredoka.b64,
+                    mqtt.bundle.js + mqtt-bus.js (the multiplayer transport:
+                    a Trystero-compatible message bus over public MQTT brokers)
 """
 from pathlib import Path
 
@@ -22,7 +24,7 @@ def js_safe(code):
 src = read('party.src.html')
 app = read('party.app.js')
 words = read('assets/dict.txt').strip()
-vendor = read('assets/trystero-nostr.bundle.js')
+vendor = read('assets/mqtt.bundle.js') + '\n' + read('assets/mqtt-bus.js')
 baloo = read('assets/baloo2.b64').replace('\n', '').strip()
 fredoka = read('assets/fredoka.b64').replace('\n', '').strip()
 silence = read('assets/silence.b64').replace('\n', '').strip()
