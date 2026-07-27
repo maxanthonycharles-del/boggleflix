@@ -556,8 +556,13 @@ const DICE6 = ["AAAFRS","AAEEEE","AAEEOO","AAFIRS","ABDEIO","ADENNN","AEEEEM","A
   "JKQWXZ","NOOTUW","OOOTTU"];
 const DICE_FOR = {4: DICE4, 5: DICE5, 6: DICE6};
 
-const VOWELS = new Set(['A','E','I','O','U']);
-function rollBoard(seed, n){
+/* The board is generated exactly the way the real game shakes its tray (and
+   the way a faithful adaptation like Netflix's simulates it): the official
+   dice are shuffled into the grid — each die lands in one cell — and each
+   shows a uniformly random face. Nothing is curated or re-rolled; vowel
+   droughts and letter clumps are part of real Boggle. Deterministic in the
+   seed, so every phone in a party shows the identical grid. */
+function genBoard(seed, n){
   const rnd = rngFromSeed(seed);
   const dice = DICE_FOR[n].slice();
   for (let i=dice.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); [dice[i],dice[j]]=[dice[j],dice[i]]; }
@@ -566,60 +571,6 @@ function rollBoard(seed, n){
     const f = d[Math.floor(rnd()*6)];
     return f === 'Q' ? 'QU' : f.toUpperCase();
   });
-}
-// Largest blob of one letter that are all touching (8-way). Two of a letter
-// side by side is fine; three-plus clumped together is what reads as "not
-// random" — the same letter staring back at you in a cluster.
-function maxAdjacentCluster(board, adj){
-  const seen = new Array(board.length).fill(false);
-  let max = 0;
-  for (let i = 0; i < board.length; i++){
-    if (seen[i]) continue;
-    const L = board[i], stack = [i]; seen[i] = true; let size = 0;
-    while (stack.length){ const c = stack.pop(); size++; for (const j of adj[c]) if (!seen[j] && board[j] === L){ seen[j] = true; stack.push(j); } }
-    if (size > max) max = size;
-  }
-  return max;
-}
-// The real Boggle dice are heavily vowel-loaded (one 5×5 die is AAEEEE — six
-// vowel faces), which piles up A's and E's and makes boards feel unrandom.
-// Target vowel counts a notch below the dice's natural average, and how hard to
-// hunt for a good one. Bands are per grid; roughly 27–34% of tiles.
-const VOWEL_BAND = {4: [4, 6], 5: [7, 9], 6: [10, 12]};
-const GEN_TRIES  = {4: 16, 5: 24, 6: 40};
-/* Score a board: 0 is ideal, higher is worse. Punishes vowel counts outside the
-   band, three-plus of any one vowel (the A/E pileup), four-plus of a consonant,
-   and same-letter clumps. */
-function boardPenalty(board, adj, band){
-  const counts = {};
-  let vowels = 0;
-  for (const c of board){ counts[c] = (counts[c]||0) + 1; if (VOWELS.has(c[0])) vowels++; }
-  let p = 0;
-  if (vowels < band[0]) p += (band[0] - vowels) * 3;
-  if (vowels > band[1]) p += (vowels - band[1]) * 3;
-  for (const k in counts){
-    if (VOWELS.has(k[0])){ if (counts[k] > 2) p += (counts[k] - 2) * 5; }
-    else if (counts[k] > 3) p += (counts[k] - 3) * 2;
-  }
-  p += Math.max(0, maxAdjacentCluster(board, adj) - 2) * 2;
-  return p;
-}
-/* Roll several boards and keep the best-scoring one. This beats a pass/fail
-   re-roll because the dice can't always satisfy every rule — best-of-N always
-   lands as close as possible instead of falling through to a bad board. Fully
-   deterministic in the seed (same rolls, same winner), so every phone in a
-   party still shows the identical grid. */
-function genBoard(seed, n){
-  const band = VOWEL_BAND[n] || [Math.round(n*n*0.27), Math.round(n*n*0.34)];
-  const tries = GEN_TRIES[n] || 24;
-  const adj = adjacency(n);
-  let best = null, bestP = Infinity;
-  for (let a = 0; a < tries; a++){
-    const board = rollBoard(a ? seed + '~' + a : seed, n);
-    const p = boardPenalty(board, adj, band);
-    if (p < bestP){ bestP = p; best = board; if (p === 0) break; }
-  }
-  return best;
 }
 function adjacency(n){
   const adj = [];
@@ -792,19 +743,24 @@ const Music = (() => {
     setEnabled(on){ on ? this.start() : this.stop(); }
   };
 })();
-/* Autoplay policy needs a real gesture — the first tap anywhere starts it. Uses
-   click, not pointerdown: pointerdown fires and bubbles to this document-level
-   listener BEFORE the SOUND button's own click handler has flipped P.sound, so
-   tapping "off" as your very first-ever tap raced Music.start() ahead of the
-   toggle and left a few notes already scheduled to ring for up to ~2s. click
-   fires after the target's own handler, so by the time this listener sees it,
-   P.sound already reflects what was actually tapped. */
-document.addEventListener('click', function unlockMusic(){
-  document.removeEventListener('click', unlockMusic);
-  Music.start();
+/* Music only plays DURING a round — menus, lobby and results stay music-free.
+   A round can begin from a network message (the host started the game), which
+   is not a user gesture, and autoplay policy wants one. So the first tap
+   anywhere primes audio instead of starting music: it resumes the context and
+   briefly plays the silent session clip, which marks it gesture-blessed so a
+   later, message-triggered play() is allowed. */
+document.addEventListener('click', function unlockAudio(){
+  document.removeEventListener('click', unlockAudio);
+  const ctx = ac();
+  if (ctx && ctx.state === 'suspended') ctx.resume();
+  holdAudioSession();
+  setTimeout(releaseAudioSession, 250);
 }, {once: true});
+// "In a round" = the game screen is up and I'm actually playing in it —
+// spectators watching mid-round get silence too.
+function inRound(){ return $('scr-game').classList.contains('active') && !G.spectating; }
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) Music.stop(); else Music.start();
+  if (document.hidden) Music.stop(); else if (inRound()) Music.start();
 });
 
 /* ---------------- global state ---------------- */
@@ -907,7 +863,9 @@ function toggleSound(){
   P.sound = !P.sound;
   store.set('sound', P.sound);
   applySoundUI();
-  Music.setEnabled(P.sound);
+  // Music is a mid-round thing only: toggling sound on from a menu shouldn't
+  // start it, but toggling it back on during a round should.
+  Music.setEnabled(P.sound && inRound());
   if (P.sound) snd.tick(3);
 }
 function refreshHome(){
@@ -933,6 +891,8 @@ $('btn-daily').addEventListener('click', () => startLocal('daily'));
 /* ---------------- join ---------------- */
 $('code-input').addEventListener('input', e => {
   e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g,'');
+  // The 4th letter IS the go — no extra tap to join.
+  if (e.target.value.length === 4) $('btn-join-go').click();
 });
 $('code-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-join-go').click(); });
 $('btn-join-go').addEventListener('click', () => {
@@ -1010,9 +970,23 @@ function connect(code, asHost){
   G.spectating = false; G.seq = 0;
   if (asHost) G.cfg = store.get('cfg', {g:4, t:180, m:3, r:3});
 
-  // More relays than the default 5 — each one is an extra chance for two phones
-  // to find each other, which is what makes joiners show up reliably.
-  const room = Trystero.joinRoom({appId:'boggleflix-party-v1', relayConfig:{redundancy: 12}}, 'bfp-' + code.toLowerCase());
+  // Pin the signalling to major, high-uptime nostr relays. The bundle's own
+  // default list is long and full of small or dead relays — a bad draw could
+  // leave two phones announcing to disjoint (or dead) relays and never meeting,
+  // which looks like "I joined the code but nobody appeared." Every phone uses
+  // this same fixed list, so hosts and joiners always share relays.
+  const RELAYS = ['relay.damus.io','nos.lol','relay.primal.net','nostr.mom','offchain.pub',
+    'nostr.oxtr.dev','nostr21.com','relay.nostr.net','nostr.land'].map(h => 'wss://' + h);
+  // TURN relays the actual game traffic when the phones' networks (carrier
+  // NAT, strict WiFi) refuse a direct link — without it, the phones can find
+  // each other via the relays yet still never connect. turnConfig is appended
+  // to the bundle's built-in STUN list.
+  const TURN = [{
+    urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443',
+           'turn:openrelay.metered.ca:443?transport=tcp'],
+    username: 'openrelayproject', credential: 'openrelayproject'
+  }];
+  const room = Trystero.joinRoom({appId:'boggleflix-party-v1', relayConfig:{urls: RELAYS}, turnConfig: TURN}, 'bfp-' + code.toLowerCase());
   const A = {
     who:   room.makeAction('who'),
     sync:  room.makeAction('sync'),
@@ -1086,7 +1060,12 @@ function connect(code, asHost){
   A.again.onMessage = () => { if (!G.isHost) resetToLobby(); };
 
   clearInterval(G.gossipTimer);
-  G.gossipTimer = setInterval(() => { if (G.net) G.net.A.sync.send(syncPayload()); }, GOSSIP_MS);
+  G.gossipTimer = setInterval(() => {
+    if (G.net) G.net.A.sync.send(syncPayload());
+    // Keep the lobby's status line current (it mentions elapsed time when a
+    // joiner is still alone) even when no network event triggers a render.
+    if ($('scr-lobby').classList.contains('active')) renderLobbyPlayers();
+  }, GOSSIP_MS);
   clearInterval(G.sweepTimer);
   G.sweepTimer = setInterval(sweepPeers, GOSSIP_MS);
   openLobby();
@@ -1203,6 +1182,7 @@ async function copyText(text, msg){
    round that is abandoned mid-flight can't fire roundOver() from under us. */
 function stopRound(){
   G.playing = false;
+  Music.stop();
   cancelAnimationFrame(G.raf);
   (G.cdTimers || []).forEach(clearTimeout);
   G.cdTimers = [];
@@ -1238,9 +1218,16 @@ function renderLobbyPlayers(){
     wrap.appendChild(blob);
   }
   const count = activePlayers().length;
-  $('lobby-status').textContent = count <= 1
-    ? 'Waiting for players — share the code! (You can also start solo.)'
-    : count + ' players in — waiting for the host to start!';
+  let status;
+  if (count > 1) status = count + ' players in — waiting for the host to start!';
+  else if (G.isHost) status = 'Waiting for players — share the code! (You can also start solo.)';
+  // A joiner alone in a room can't tell "still connecting" from "typo'd the
+  // code" — the room exists either way. Say what's happening, then nudge.
+  else status = Date.now() - G.joinedAt > 15000
+    ? "Can't find the party — double-check the code with the host!"
+    : 'Joining… hang tight while the phones find each other';
+  $('lobby-status').textContent = status;
+  renderLobbyCtas(); // the Start button's label counts players too
 }
 const SEGS = [['seg-grid','g'],['seg-timer','t'],['seg-min','m'],['seg-rounds','r']];
 function renderSettings(){
@@ -1382,6 +1369,7 @@ function beginRound(){
   show('game');
   fitTiles(); // now the board has a size, so the letters can be scaled to it
   requestWake();
+  if (!G.spectating) Music.start(); // the song belongs to the round only
   // One game = one seed set, so count it once — on round 1, and only if
   // actually playing (a mid-round joiner spectates this round).
   if (G.round === 0 && !G.spectating) store.set('games', store.get('games',0) + 1);
@@ -1666,6 +1654,7 @@ function releaseWake(){ try { if (G.lock){ G.lock.release(); G.lock = null; } } 
 
 function roundOver(wasSpectating){
   G.playing = false;
+  Music.stop(); // the song ends with the round — standings and podium are quiet
   cancelAnimationFrame(G.raf);
   (G.cdTimers||[]).forEach(clearTimeout);
   G.activePointer = null; G.path = []; clearSel();

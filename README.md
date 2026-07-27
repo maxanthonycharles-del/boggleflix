@@ -47,6 +47,18 @@ as a bug to players, so that cube is a plain six-letter one here. `Qu` is the
 only tile that is ever two characters — every set has it, and a bare Q is a dead
 tile without it.
 
+Boards are generated exactly the way the real game shakes its tray: the dice
+are shuffled into the grid and each shows a uniformly random face — no
+curation, no re-rolls. Vowel droughts and letter clumps are part of Boggle.
+Deterministic per seed, so every phone in a party sees the identical grid.
+
+Signalling is pinned to a fixed list of major public nostr relays (every phone
+uses the same list, so hosts and joiners always share relays), and a public
+TURN server carries the game traffic when two phones' networks won't allow a
+direct link (e.g. carrier NAT). Joining is one step: typing the 4th letter of
+the code joins immediately, and the lobby says plainly whether it's still
+connecting or the code should be double-checked.
+
 ## Scoring
 Real Boggle's table: 3–4 letters = 1 point, 5 = 2, 6 = 3, 7 = 5, 8+ = 11. On
 the 6×6 board, words of 9+ letters score 2 points per letter (Super Big Boggle
@@ -66,10 +78,14 @@ Defaults follow the real game too: 3-minute rounds, minimum word length 3 on
 board's rule; the host can still override it).
 
 ## Music
-A short original loop plays under everything, synthesized live in the browser
-(same technique as the tap/word sound effects, just longer) — not a recording,
-so nothing to license. It starts on your first tap and follows the SOUND toggle
-(on the home screen and in the game HUD) like every other sound.
+A short original loop, synthesized live in the browser (same technique as the
+tap/word sound effects, just longer) — not a recording, so nothing to license.
+It plays **only while a round is being played**: it starts with the round and
+stops the moment time is up, so menus, the lobby, standings and the podium are
+music-free. It follows the SOUND toggle (home screen and in-game HUD) like
+every other sound. The first tap on the page silently primes audio so a round
+started by the host (a network message, not a tap) may legally start the song
+under mobile autoplay rules.
 
 iOS silences Web Audio when the phone's ring/silent switch is on. To play
 through that, a tiny silent looping clip (`assets/silence.b64`) holds the audio
