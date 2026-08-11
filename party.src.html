@@ -235,7 +235,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   box-shadow:0 8px 0 #14297A,0 18px 40px rgba(120,8,55,.3),inset 0 2px 8px rgba(255,255,255,.25);
   width:100%;max-height:100%;aspect-ratio:1;position:relative;
   width:100cqmin;height:100cqmin;max-height:100cqmin}
-.board{position:relative;width:100%;height:100%;display:grid;gap:clamp(4px,1.4vw,8px);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+/* Dice sit apart like Netflix's tray — a touch more air than the tiles need,
+   which also makes each die an easier, more forgiving swipe target. */
+.board{position:relative;width:100%;height:100%;display:grid;gap:clamp(6px,2vw,11px);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .board.shake{animation:shake .3s ease}
 @keyframes shake{20%{transform:translateX(-7px)}45%{transform:translateX(6px)}70%{transform:translateX(-4px)}90%{transform:translateX(2px)}}
 .tile{position:relative;border-radius:clamp(8px,2.2vw,14px);display:grid;place-items:center;background:var(--cream);
@@ -283,28 +285,63 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .stand-row.pending{opacity:.55}
 .stand-cta{display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:10px}
 
-/* ---------- SCORE REVEAL (end-of-game, Boggle-style count-up) ---------- */
-#scr-reveal{overflow-y:auto}
-.reveal-list{display:flex;flex-direction:column;gap:10px;padding-bottom:8px}
-.rv-card{background:var(--white);border-radius:18px;padding:11px 14px 12px;box-shadow:0 4px 0 rgba(30,42,94,.16);
-  opacity:.5;transform:scale(.98);transition:opacity .3s ease,transform .3s ease,box-shadow .3s ease}
-.rv-card.active{opacity:1;transform:scale(1);box-shadow:0 5px 0 var(--gold-edge),0 0 0 3px var(--gold)}
-.rv-card.done{opacity:1;transform:scale(1)}
-.rv-top{display:flex;align-items:center;gap:11px}
-.rv-top .face{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:22px;background:#fff;border:3px solid var(--c,#3B82F6);flex:0 0 auto}
-.rv-name{font-family:var(--display);font-weight:800;font-size:16.5px;color:var(--navy);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rv-score{font-family:var(--display);font-weight:800;font-size:26px;color:var(--navy);font-variant-numeric:tabular-nums}
-.rv-score.bump{animation:rvbump .28s ease}
-@keyframes rvbump{40%{transform:scale(1.35);color:var(--green-edge)}}
-.rv-words{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
-.rv-words:empty{margin-top:0}
-.rv-chip{display:inline-flex;align-items:baseline;gap:5px;border-radius:999px;padding:5px 10px 4px;
-  font-family:var(--display);font-weight:800;font-size:14px;animation:rvpop .22s cubic-bezier(.2,1.6,.4,1)}
-.rv-chip.scored{background:#D8F6E4;color:#0B7A3E}
-.rv-chip.scored b{color:#FF7A1A;font-size:11px}
-.rv-chip.dup{background:#EEECE4;color:#9A96A6;text-decoration:line-through;text-decoration-thickness:2px}
-.rv-none{font-size:12.5px;color:#9A96A6;font-weight:600;margin-top:7px}
-@keyframes rvpop{from{transform:scale(.4);opacity:0}}
+/* ---------- SCORE REVEAL (end-of-game, word-by-word like Boggle Party) ---------- */
+#scr-reveal{overflow:hidden;gap:8px}
+.rv-phase{font-family:var(--display);font-weight:800;font-size:26px;line-height:1.1;color:#fff;
+  text-shadow:0 3px 0 rgba(30,42,94,.85),0 8px 18px rgba(130,10,62,.35);animation:phasein .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes phasein{from{transform:scale(.55) rotate(-2deg);opacity:0}}
+/* the players: bubbles that swell with their scores and trade places live */
+.rv-bubbles{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:0 4px}
+.rv-bub{display:flex;flex-direction:column;align-items:center;gap:3px;width:78px;position:relative;padding-top:2px}
+.rv-bub .ring{width:78px;height:78px;display:grid;place-items:center;position:relative}
+.rv-bub .face{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:26px;border:4px solid var(--c,#3B82F6);
+  transform:scale(var(--grow,1));transition:transform .45s cubic-bezier(.2,1.4,.4,1)}
+.rv-bub .crown{position:absolute;top:-8px;left:50%;translate:-50% 0;font-size:22px;z-index:2;
+  filter:drop-shadow(0 2px 0 rgba(30,42,94,.4));opacity:0;transform:scale(0) rotate(-14deg);transition:transform .35s cubic-bezier(.2,1.8,.4,1),opacity .2s ease}
+.rv-bub.lead .crown{opacity:1;transform:scale(1) rotate(0)}
+.rv-bub b{font-size:11.5px;font-weight:700;color:#fff;text-shadow:0 1px 0 rgba(150,15,72,.35);max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-bub.me b{color:var(--gold)}
+.bub-score{font-family:var(--display);font-weight:800;font-size:16px;color:var(--navy);background:var(--white);
+  border-radius:999px;padding:1px 10px;box-shadow:0 3px 0 rgba(30,42,94,.18);font-variant-numeric:tabular-nums}
+.bub-score.bump{animation:rvbump .3s ease}
+@keyframes rvbump{40%{transform:scale(1.35)}}
+.bub-pop{position:absolute;top:4px;left:50%;z-index:3;font-family:var(--display);font-weight:800;font-size:18px;color:var(--gold);
+  text-shadow:0 2px 0 rgba(30,42,94,.8);pointer-events:none;animation:floatpop .85s ease forwards}
+/* centre stage: one word at a time, spelled in chunky dice */
+.rv-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.rv-word{display:flex;flex-direction:column;align-items:center;gap:13px;position:relative;padding:16px 0;
+  animation:wordin .32s cubic-bezier(.2,1.6,.4,1)}
+@keyframes wordin{from{transform:scale(.5) rotate(-3deg);opacity:0}}
+.rv-tiles{display:flex;gap:5px}
+.rv-tiles span{width:calc(var(--ts,30px)*1.6);height:calc(var(--ts,30px)*1.6);border-radius:24%;display:grid;place-items:center;
+  font-family:var(--display);font-weight:800;font-size:var(--ts,30px);line-height:1;color:var(--navy);background:var(--cream);
+  box-shadow:0 4px 0 var(--cream-edge),0 10px 20px rgba(130,10,62,.28);animation:rvtile .35s cubic-bezier(.2,1.6,.4,1) backwards}
+@keyframes rvtile{from{transform:translateY(-26px) rotate(-8deg) scale(.5);opacity:0}}
+.rv-word.unique .rv-tiles span{background:linear-gradient(180deg,#FFEE8F,#FFD93C);box-shadow:0 4px 0 var(--gold-edge),0 0 26px rgba(255,217,60,.8)}
+/* unique words get a slowly turning ray-burst behind the dice */
+.rv-word.unique::before{content:'';position:absolute;left:50%;top:50%;width:340px;height:340px;margin:-170px 0 0 -170px;z-index:-1;
+  background:repeating-conic-gradient(rgba(255,236,140,.45) 0 9deg,transparent 9deg 30deg);
+  -webkit-mask-image:radial-gradient(circle,#000 22%,transparent 68%);mask-image:radial-gradient(circle,#000 22%,transparent 68%);
+  animation:rayspin 9s linear infinite}
+@keyframes rayspin{to{transform:rotate(360deg)}}
+.rv-finders{display:flex;flex-wrap:wrap;gap:7px;justify-content:center}
+.rv-finder{display:flex;align-items:center;gap:6px;background:var(--white);border-radius:999px;padding:4px 11px 4px 4px;
+  box-shadow:0 3px 0 rgba(30,42,94,.18);animation:chipin .3s cubic-bezier(.2,1.6,.4,1) backwards}
+.rv-finder .face{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;font-size:16px;border:3px solid var(--c,#3B82F6)}
+.rv-finder b{font-family:var(--display);font-weight:800;font-size:16px;color:#FF7A1A}
+.rv-x2{font-family:var(--display);font-weight:800;font-size:13.5px;letter-spacing:.06em;color:var(--navy);
+  background:linear-gradient(180deg,#FFEE8F,#FFD93C);border-radius:999px;padding:6px 15px;box-shadow:0 3px 0 var(--gold-edge);
+  animation:x2in .45s cubic-bezier(.2,1.8,.4,1) .15s backwards}
+@keyframes x2in{from{transform:scale(0) rotate(8deg)}}
+.rv-shared{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.95);text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.rv-round{position:absolute;top:2px;right:-4px;font-family:var(--display);font-weight:800;font-size:11px;color:#fff;
+  background:rgba(30,42,94,.4);border-radius:999px;padding:3px 8px}
+/* the trail of words already revealed */
+.rv-log{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;min-height:30px;padding:2px}
+.rv-log::-webkit-scrollbar{display:none}
+.rv-logchip{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12px;color:var(--navy);
+  background:rgba(255,255,255,.85);border-radius:999px;padding:4px 10px;animation:chipin .25s ease}
+.rv-logchip.u{background:var(--gold);box-shadow:0 2px 0 var(--gold-edge)}
 .rv-note{color:#fff;font-weight:600;font-size:12px;text-align:center;text-shadow:0 1px 0 rgba(150,15,72,.3);opacity:.85;padding-top:2px}
 .podium-stage{display:flex;align-items:flex-end;justify-content:center;gap:10px;padding:22px 0 0;min-height:220px}
 .pod{display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;max-width:110px;animation:podin .6s cubic-bezier(.2,1.5,.4,1) backwards}
@@ -349,6 +386,15 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);z-index:60;background:var(--navy);color:#fff;
   font-weight:600;font-size:14px;border-radius:999px;padding:11px 20px;box-shadow:0 10px 26px rgba(0,0,0,.3);opacity:0;transition:transform .3s ease,opacity .3s ease;max-width:88vw;text-align:center}
 .toast.show{transform:translate(-50%,0);opacity:1}
+
+/* ---------- AVATAR FACES (shared, last so it wins everywhere) ----------
+   Every avatar circle in the game — picker, lobby, rivals, standings, reveal,
+   podium — renders as the same glossy 3D badge, with the emoji dead-centre:
+   line-height:1 shrinks the line box to the glyph so grid centring is exact. */
+#app .face,#app .avatar-pick{line-height:1;
+  background:radial-gradient(120% 120% at 32% 26%,#FFFFFF 40%,#F6F0DE 72%,#E9DEC2 100%);
+  box-shadow:inset 0 -4px 7px rgba(30,42,94,.14),inset 0 2px 4px rgba(255,255,255,.95),0 2px 0 rgba(30,42,94,.12)}
+#app .avatar-pick.on{background:radial-gradient(120% 120% at 32% 26%,#FFEB99 40%,#FFD93C 78%,#EFBE00 100%)}
 
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
@@ -494,11 +540,13 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   <!-- ============ SCORE REVEAL ============ -->
   <section class="screen" id="scr-reveal">
     <div class="stand-head">
-      <div class="h1" style="color:#fff;text-shadow:0 3px 0 rgba(30,42,94,.85)">📊 Scores!</div>
-      <div class="stand-sub" id="reveal-sub">Counting up everyone's words…</div>
+      <div class="rv-phase" id="reveal-phase">📊 SCORES!</div>
+      <div class="stand-sub" id="reveal-sub">Adding up everyone's words…</div>
     </div>
-    <div class="reveal-list" id="reveal-list"></div>
-    <div class="rv-note" id="reveal-note">words two or more players found cancel out — just like real Boggle</div>
+    <div class="rv-bubbles" id="reveal-bubbles"></div>
+    <div class="rv-stage" id="reveal-stage"></div>
+    <div class="rv-log" id="reveal-log"></div>
+    <div class="rv-note" id="reveal-note">words nobody else found are worth DOUBLE points!</div>
   </section>
 
   <!-- ============ PODIUM ============ -->

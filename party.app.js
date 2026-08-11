@@ -154,6 +154,8 @@ const snd = {
   go(){ tone(523,.12,'square',.07); tone(1047,.25,'square',.06,.1); },
   up(){ tone(523,.1,'sine',.09); tone(659,.1,'sine',.09,.09); tone(784,.1,'sine',.09,.18); tone(1047,.3,'sine',.09,.27); },
   fanfare(){ [523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,.16,'triangle',.09,i*.11)); },
+  // the unique-word ×2 flourish — a quick bright glissando
+  spark(){ [1047,1319,1568,2093].forEach((f,i)=>tone(f,.09,'triangle',.08,i*.05)); },
   // "10 seconds left" — two urgent beeps, louder than the rest so it cuts through.
   warn(){ tone(988,.13,'square',.12); tone(988,.16,'square',.12,.22); }
 };
@@ -179,47 +181,103 @@ function holdAudioSession(){
 }
 function releaseAudioSession(){ try { if (sessionAudio) sessionAudio.pause(); } catch(e){} }
 
-/* A short original loop, synthesized live with the same oscillator technique as
-   the SFX above. Runs under the single SOUND toggle, same as every other sound
-   here; there's no separate music control. */
+/* A short original loop, synthesized live with WebAudio — no audio files.
+   Styled after Boggle's own table-top bounce: a swung marimba tune over a
+   plucked bass, offbeat chord stabs, a shaker and a soft kick. Runs under the
+   single SOUND toggle, same as every other sound here. */
 const Music = (() => {
-  const BPM = 116, BEAT = 60 / BPM;
-  // I - V - vi - IV in C major, one bar per chord, four-bar loop.
-  const CHORDS = [
-    [130.81, 164.81, 196.00], // C3 E3 G3
-    [98.00,  123.47, 146.83], // G2 B2 D3
-    [110.00, 130.81, 164.81], // A2 C3 E3
-    [87.31,  110.00, 130.81], // F2 A2 C3
+  const BPM = 118, BEAT = 60 / BPM, BAR = BEAT * 4, SW = .56; // swung 8ths
+  const st = n => 261.63 * Math.pow(2, n / 12);   // semitones from middle C
+  /* Eight bars, two four-bar phrases: A (C Am F G) asks, B (F C Dm G) answers.
+     b = bass root, c = stab voicing (kept around middle C so the voices barely
+     move between chords), m = melody in semitones above C5, one slot per
+     eighth note, null = rest. */
+  const BARS = [
+    {b:-24, c:[0,4,7],  m:[4,7,9,7,   4,2,0,null]},
+    {b:-15, c:[-3,0,4], m:[0,4,7,4,   9,7,4,null]},
+    {b:-19, c:[0,5,9],  m:[5,9,12,9,  7,4,2,null]},
+    {b:-17, c:[-1,2,7], m:[2,4,7,4,   2,0,null,null]},
+    {b:-19, c:[0,5,9],  m:[9,12,14,12, 9,7,null,null]},
+    {b:-24, c:[0,4,7],  m:[7,12,16,12, 14,12,9,null]},
+    {b:-22, c:[2,5,9],  m:[2,5,9,5,   7,9,12,null]},
+    {b:-17, c:[-1,2,7], m:[12,11,9,7, 4,2,0,null]},
   ];
-  const SCALE = [523.25, 587.33, 659.25, 698.46, 783.99, 880.00, 987.77, 1046.50]; // C5..C6
-  const HOOK = [0,2,4,2, 1,3,5,3, 0,2,4,5, 3,2,1,0].map(i => SCALE[i]);
 
-  let timer = 0, beatIdx = 0, playing = false, bus = null;
-  const LEVEL = 0.62;
+  let timer = 0, barIdx = 0, nextBar = 0, playing = false, bus = null, noiseBuf = null;
+  const LEVEL = 0.6;
 
   function getBus(ctx){
     if (!bus){ bus = ctx.createGain(); bus.gain.value = LEVEL; bus.connect(ctx.destination); }
     return bus;
   }
-  function note(ctx, dest, freq, t0, dur, type, vol){
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = type; o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(vol, t0 + .03);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g).connect(dest); o.start(t0); o.stop(t0 + dur + .05);
+  function noise(ctx){
+    if (!noiseBuf){
+      noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * .25), ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    return noiseBuf;
+  }
+  function env(ctx, t, vel, dur){
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.exponentialRampToValueAtTime(vel, t + .012);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    return g;
+  }
+  // fundamental + a fast-dying 4th partial: the woody "tock" of a mallet bar
+  function marimba(ctx, dest, f, t, vel){
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    o.connect(env(ctx, t, vel, .38)).connect(dest); o.start(t); o.stop(t + .45);
+    const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = f * 4;
+    o2.connect(env(ctx, t, vel * .3, .09)).connect(dest); o2.start(t); o2.stop(t + .15);
+  }
+  function bass(ctx, dest, f, t){
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+    o.connect(env(ctx, t, .2, .3)).connect(dest); o.start(t); o.stop(t + .36);
+  }
+  function stab(ctx, dest, notes, t, vel){
+    for (const n of notes){
+      const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = st(n);
+      o.connect(env(ctx, t, vel, .16)).connect(dest); o.start(t); o.stop(t + .22);
+    }
+  }
+  function shaker(ctx, dest, t, vel){
+    const src = ctx.createBufferSource(); src.buffer = noise(ctx);
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 6500;
+    src.connect(hp).connect(env(ctx, t, vel, .05)).connect(dest);
+    src.start(t); src.stop(t + .08);
+  }
+  function thump(ctx, dest, t){
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(55, t + .09);
+    o.connect(env(ctx, t, .17, .13)).connect(dest); o.start(t); o.stop(t + .17);
+  }
+  function scheduleBar(ctx, dest, bar, t0){
+    // slot i = the i-th eighth note; odd slots land late — that's the swing
+    const slot = i => t0 + Math.floor(i / 2) * BEAT + (i % 2 ? BEAT * SW : 0);
+    bass(ctx, dest, st(bar.b), slot(0));
+    bass(ctx, dest, st(bar.b), slot(4));
+    bass(ctx, dest, st(bar.b + 7), slot(7));           // fifth walks into the next bar
+    thump(ctx, dest, slot(0)); thump(ctx, dest, slot(4));
+    for (let i = 0; i < 8; i++) shaker(ctx, dest, slot(i), i === 2 || i === 6 ? .09 : .04);
+    stab(ctx, dest, bar.c, slot(3), .045);             // stabs bounce on the off-beats
+    stab(ctx, dest, bar.c, slot(7), .035);
+    bar.m.forEach((n, i) => { if (n !== null) marimba(ctx, dest, st(12 + n), slot(i), .11); });
   }
   function tick(){
     if (!playing) return;
     const ctx = ac();
     if (ctx){
-      const dest = getBus(ctx), t0 = ctx.currentTime + .05;
-      const bar = Math.floor(beatIdx / 4) % CHORDS.length;
-      if (beatIdx % 4 === 0) for (const f of CHORDS[bar]) note(ctx, dest, f, t0, BEAT*4*.95, 'sine', .06);
-      note(ctx, dest, HOOK[beatIdx % HOOK.length], t0, BEAT*.85, 'triangle', .085);
-      beatIdx++;
+      const dest = getBus(ctx);
+      if (!nextBar || nextBar < ctx.currentTime) nextBar = ctx.currentTime + .06;
+      while (nextBar < ctx.currentTime + .5){
+        scheduleBar(ctx, dest, BARS[barIdx % BARS.length], nextBar);
+        barIdx++; nextBar += BAR;
+      }
     }
-    timer = setTimeout(tick, BEAT * 1000);
+    timer = setTimeout(tick, 120);
   }
   return {
     start(){
@@ -1210,8 +1268,8 @@ function routeAfterRound(){
   const last = G.round >= G.cfg.r - 1;
   if (G.mode !== 'party'){ renderLocalResults(); show('standings'); return; }
   if (last){
-    // Real-Boggle-style finale: a leaderboard where each player's score counts
-    // up as their words are revealed, then the podium.
+    // Boggle-Party-style finale: the game's words revealed one at a time,
+    // paying whoever found them (unique finds pay double), then the podium.
     runReveal(() => { renderPodium(); show('podium'); snd.fanfare(); confettiBurst(); });
   }
   else { renderStandings(); show('standings'); }
@@ -1230,15 +1288,17 @@ function roundReports(round){
   }
   return out;
 }
-/* Real Boggle's duplicate rule: a word found by two or more players is crossed
-   out and scores NOTHING for anyone — only words nobody else found count.
-   That needs everyone's word list, so it only ever touches round-end totals,
-   never the live in-round score (which stays provisional, like the paper game
-   before comparing lists). Every phone runs this over the same reported
-   lists, so it lands on the same number everywhere without a scorekeeper, and
-   it updates as stragglers report in, same as every other "pending" stat.
-   With nobody to compare against (solo, or alone in a party room), every word
-   simply counts. `best` is the top-scoring word that actually counted. */
+/* Netflix Boggle Party's duplicate rule (this game's model): every valid word
+   scores for every player who found it, and a word NOBODY else submitted
+   scores DOUBLE — the unique-word bonus is the whole strategy. The bonus needs
+   everyone's word list, so it only ever touches round-end totals, never the
+   live in-round score (which stays provisional base points until the lists
+   are compared). Every phone runs this over the same reported lists, so it
+   lands on the same number everywhere without a scorekeeper, and it updates
+   as stragglers report in, same as every other "pending" stat. With nobody to
+   compare against (solo, or alone in a party room), there is no bonus — every
+   word pays plain base points. `best` is the player's top-scoring word,
+   bonus included. */
 function roundBreakdown(f, reports){
   if (reports.length < 2){
     return {score: f.s, unique: 0, vs: false, best: f.b ? {w: f.b, p: f.bp} : null};
@@ -1247,9 +1307,9 @@ function roundBreakdown(f, reports){
   for (const r of reports) for (const w of r.f.words) counts.set(w, (counts.get(w)||0) + 1);
   let score = 0, unique = 0, best = null;
   for (const w of f.words){
-    if (counts.get(w) !== 1) continue;
-    unique++;
-    const p = scoreFor(w);
+    const solo = counts.get(w) === 1;
+    if (solo) unique++;
+    const p = scoreFor(w) * (solo ? 2 : 1);
     score += p;
     if (!best || p > best.p || (p === best.p && w.length > best.w.length)) best = {w, p};
   }
@@ -1290,11 +1350,12 @@ function renderStandings(){
     let sub;
     if (!r.f) sub = r.p.gone ? 'left the party' : 'finishing…';
     else if (r.bd && r.bd.vs){
-      // Head-to-head round: only words nobody else found scored.
+      // Head-to-head round: words nobody else found paid double.
       const wn = r.f.w === 1 ? '1 word' : r.f.w + ' words';
       sub = r.bd.best
-        ? 'best: ' + r.bd.best.w.toUpperCase() + ' +' + r.bd.best.p + ' · ' + r.bd.unique + ' of ' + wn + ' scored'
-        : (r.f.w ? wn + ' — all found by others!' : 'no words this round');
+        ? 'best: ' + r.bd.best.w.toUpperCase() + ' +' + r.bd.best.p + ' · ' +
+          (r.bd.unique ? r.bd.unique + ' unique (×2!) of ' + wn : wn + ', none unique')
+        : 'no words this round';
     }
     else sub = r.f.b ? 'best: ' + r.f.b.toUpperCase() + ' +' + r.f.bp + ' · ' + r.f.w + ' words' : r.f.w + ' words';
     info.appendChild(el('small','', sub));
@@ -1353,100 +1414,182 @@ $('btn-share-daily').addEventListener('click', async () => {
 });
 
 /* ---------------- podium ---------------- */
-/* Every word this player played across the whole game, each flagged as scored
-   (nobody else in its round found it — real Boggle's duplicate rule) or a
-   cancelled duplicate. Ordered biggest-scorer first so the count-up ramps up,
-   duplicates trailing. The scored points sum to the player's grand total. */
-function revealItemsFor(p){
-  const items = [];
+/* Every word anyone played across the whole game, one entry per (word, round):
+   who found it, and what it pays — base points to each finder, DOUBLE when the
+   finder was alone on it (Boggle Party's unique-word bonus). Deterministic
+   from the synced fin.words, so every phone stages the identical show. */
+function buildRevealEntries(){
+  const entries = [];
   for (let r = 0; r < G.cfg.r; r++){
-    const f = p.me ? G.finsSelf[r] : (p.fin && p.fin[r]);
-    if (!f || !f.words) continue;
     const reports = roundReports(r);
-    let counts = null;
-    if (reports.length >= 2){
-      counts = new Map();
-      for (const rr of reports) for (const w of rr.f.words) counts.set(w, (counts.get(w)||0) + 1);
+    if (!reports.length) continue;
+    const multi = reports.length >= 2;
+    const byWord = new Map();
+    for (const rep of reports) for (const w of rep.f.words){
+      if (!byWord.has(w)) byWord.set(w, []);
+      byWord.get(w).push(rep.id);
     }
-    for (const w of f.words){
-      const scored = !counts || counts.get(w) === 1;
-      items.push({w, scored, pts: scored ? scoreFor(w) : 0});
+    for (const [w, finders] of byWord){
+      const unique = multi && finders.length === 1;
+      entries.push({w, r, finders, unique, pts: scoreFor(w) * (unique ? 2 : 1)});
     }
   }
-  items.sort((a,b) => (b.scored - a.scored) || (b.pts - a.pts) || a.w.localeCompare(b.w));
-  return items;
+  return entries;
 }
 let revealTimers = [];
 function clearReveal(){ revealTimers.forEach(clearTimeout); revealTimers = []; }
+/* The finale, staged like Boggle Party's: every player becomes a bubble along
+   the top, then the game's words take the centre stage ONE AT A TIME — shared
+   words first, paying everyone who spotted them, then the unique finds with
+   their ×2 flourish — while the bubbles swell with their scores and trade
+   places live. Ends on "the winner is…" and hands off to the podium. */
 function runReveal(done){
   clearReveal();
-  const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p), items: revealItemsFor(p)}))
-    .sort((a,b) => b.total - a.total);  // leaderboard: winner on top
-  const listEl = $('reveal-list'); listEl.replaceChildren();
-  const cards = rows.map(r => {
-    const card = el('div','rv-card');
-    const top = el('div','rv-top');
-    const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
-    top.appendChild(face);
-    top.appendChild(el('b','rv-name', r.p.me ? r.p.name + ' (you)' : r.p.name));
-    const score = el('span','rv-score','0');
-    top.appendChild(score);
-    card.appendChild(top);
-    const words = el('div','rv-words');
-    card.appendChild(words);
-    listEl.appendChild(card);
-    return {r, card, score, words, shown: 0};
-  });
-  $('reveal-sub').textContent = 'Counting up everyone’s words…';
-  show('reveal');
-
+  const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p)}));
+  const maxTotal = Math.max(1, ...rows.map(r => r.total));
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const at = (ms, fn) => revealTimers.push(setTimeout(fn, ms));
 
-  if (reduced){
-    // No animation: land on the final numbers, then straight to the podium.
-    cards.forEach(c => {
-      c.score.textContent = String(c.r.total);
-      c.card.classList.add('done');
-      c.r.items.forEach(it => c.words.appendChild(chipFor(it)));
+  // one bubble per player — these grow and reorder as the points land
+  const wrap = $('reveal-bubbles'); wrap.replaceChildren();
+  const bubbles = new Map();
+  rows.forEach((r, i) => {
+    const b = el('div','rv-bub' + (r.p.me ? ' me' : ''));
+    b.style.order = i;
+    const ring = el('div','ring');
+    const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
+    ring.appendChild(face);
+    ring.appendChild(el('span','crown','👑'));
+    b.appendChild(ring);
+    b.appendChild(el('b','', r.p.me ? 'you' : r.p.name));
+    const sc = el('span','bub-score','0');
+    b.appendChild(sc);
+    wrap.appendChild(b);
+    bubbles.set(r.id, {el: b, face, sc, score: 0});
+  });
+  const stage = $('reveal-stage'); stage.replaceChildren();
+  const log = $('reveal-log'); log.replaceChildren();
+  setPhase('📊 SCORES!', 'Adding up everyone’s words…');
+  show('reveal');
+
+  function setPhase(title, sub){
+    const ph = $('reveal-phase');
+    ph.textContent = title;
+    ph.style.animation = 'none'; void ph.offsetWidth; ph.style.animation = '';
+    $('reveal-sub').textContent = sub;
+  }
+  function award(id, pts){
+    const b = bubbles.get(id); if (!b) return;
+    b.score += pts;
+    b.sc.textContent = String(b.score);
+    // the bubble literally grows with the score — the winner ends up biggest
+    b.face.style.setProperty('--grow', (1 + .55 * Math.min(1, b.score / maxTotal)).toFixed(3));
+    b.sc.classList.remove('bump'); void b.sc.offsetWidth; b.sc.classList.add('bump');
+    const fp = el('span','bub-pop','+' + pts);
+    b.el.appendChild(fp);
+    revealTimers.push(setTimeout(() => fp.remove(), 900));
+  }
+  function reorder(){
+    const sorted = [...bubbles.values()].sort((a,b) => b.score - a.score);
+    const before = new Map();
+    if (!reduced) bubbles.forEach((b,id) => before.set(id, b.el.getBoundingClientRect()));
+    let changed = false;
+    sorted.forEach((b,i) => {
+      if (+b.el.style.order !== i) changed = true;
+      b.el.style.order = i;
+      b.el.classList.toggle('lead', i === 0 && b.score > 0);
     });
-    at(900, done);
+    if (!changed || reduced) return;
+    // FLIP: jump back to the old spot, then glide to the new one
+    bubbles.forEach((b,id) => {
+      const a = before.get(id), z = b.el.getBoundingClientRect();
+      const dx = a.left - z.left, dy = a.top - z.top;
+      if (!dx && !dy) return;
+      b.el.style.transition = 'none';
+      b.el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      requestAnimationFrame(() => {
+        b.el.style.transition = 'transform .45s cubic-bezier(.2,1.3,.4,1)';
+        b.el.style.transform = '';
+      });
+    });
+  }
+  function showWord(e2){
+    stage.replaceChildren();
+    const card = el('div','rv-word' + (e2.unique ? ' unique' : ''));
+    const word = e2.w.toUpperCase();
+    const tiles = el('div','rv-tiles');
+    // letter tiles sized so even ANACONDAS fits a phone screen
+    tiles.style.setProperty('--ts', Math.max(14, Math.min(32, Math.floor((Math.min(innerWidth, 520) - 80) / word.length * .58))) + 'px');
+    [...word].forEach((ch, i) => {
+      const s = el('span','', ch);
+      s.style.animationDelay = (i * 35) + 'ms';
+      tiles.appendChild(s);
+    });
+    card.appendChild(tiles);
+    const row = el('div','rv-finders');
+    e2.finders.forEach((id, i) => {
+      const r = rows.find(x => x.id === id);
+      const chip = el('span','rv-finder');
+      chip.style.animationDelay = (120 + i * 60) + 'ms';
+      const face = el('span','face', r ? r.p.emoji : '🙂'); face.style.setProperty('--c', colorOf(id));
+      chip.appendChild(face);
+      chip.appendChild(el('b','','+' + e2.pts));
+      row.appendChild(chip);
+    });
+    card.appendChild(row);
+    if (e2.unique) card.appendChild(el('div','rv-x2','UNIQUE — DOUBLE POINTS!'));
+    else if (e2.finders.length > 1) card.appendChild(el('div','rv-shared', e2.finders.length + ' of you found it'));
+    if (G.cfg.r > 1) card.appendChild(el('span','rv-round','R' + (e2.r + 1)));
+    stage.appendChild(card);
+    const lc = el('span','rv-logchip' + (e2.unique ? ' u' : ''), word);
+    log.appendChild(lc);
+    log.scrollLeft = log.scrollWidth;
+  }
+  // Everyone's final number is already known — the show just performs it.
+  function snapTotals(){
+    rows.forEach(r => {
+      const b = bubbles.get(r.id);
+      if (b && b.score !== r.total){ b.score = r.total; b.sc.textContent = String(r.total); }
+    });
+    reorder();
+  }
+
+  const entries = buildRevealEntries();
+  // small scores first so every phase builds to its biggest word
+  const shared = entries.filter(e2 => !e2.unique).sort((a,b) => a.pts - b.pts || a.w.localeCompare(b.w));
+  const uniq = entries.filter(e2 => e2.unique).sort((a,b) => a.pts - b.pts || a.w.localeCompare(b.w));
+
+  if (reduced || !entries.length){
+    snapTotals();
+    if (!entries.length) $('reveal-sub').textContent = 'No words this game… the sequel will be better!';
+    at(reduced ? 900 : 2000, done);
     return;
   }
 
-  // Spotlight moves bottom (lowest rank) up to the winner, building suspense.
-  let t = 400;
-  for (let ci = cards.length - 1; ci >= 0; ci--){
-    const c = cards[ci];
-    const items = c.r.items;
-    const iv = items.length ? Math.max(55, Math.min(150, Math.round(950 / items.length))) : 0;
-    at(t, () => { c.card.classList.add('active'); c.card.scrollIntoView({block:'center', behavior:'smooth'}); });
-    let running = 0, tick = 0;
-    if (!items.length){
-      at(t + 250, () => c.words.appendChild(el('span','rv-none','no words this game')));
-    }
-    items.forEach((it, k) => {
-      at(t + 200 + k * iv, () => {
-        c.words.appendChild(chipFor(it));
-        if (it.scored){
-          running += it.pts;
-          c.score.textContent = String(running);
-          c.score.classList.remove('bump'); void c.score.offsetWidth; c.score.classList.add('bump');
-          snd.tick(++tick);
-        } else { snd.dupe(); }
-      });
+  let t = 700, tickN = 0;
+  if (shared.length){
+    at(t, () => setPhase('🤝 WORDS YOU SHARED', 'everyone who found it scores!'));
+    t += 1100;
+    // pace each phase to its word count — snappy for a big haul, savoured for a few
+    const iv = Math.max(560, Math.min(1000, Math.round(26000 / shared.length)));
+    shared.forEach(e2 => {
+      at(t, () => { showWord(e2); e2.finders.forEach(id => award(id, e2.pts)); reorder(); snd.tick(tickN++ % 8); });
+      t += iv;
     });
-    const dwell = 200 + items.length * iv + 500;
-    at(t + dwell - 250, () => { c.card.classList.remove('active'); c.card.classList.add('done'); });
-    t += dwell;
+    t += 400;
   }
-  $('reveal-sub').textContent = 'And the winner is…';
-  at(t + 500, done);
-}
-function chipFor(it){
-  const chip = el('span','rv-chip ' + (it.scored ? 'scored' : 'dup'), it.w.toUpperCase());
-  if (it.scored) chip.appendChild(el('b','','+'+it.pts));
-  return chip;
+  if (uniq.length){
+    at(t, () => { stage.replaceChildren(); setPhase('✨ UNIQUE WORDS', 'nobody else found these — DOUBLE points!'); snd.spark(); });
+    t += 1600;
+    const iv = Math.max(760, Math.min(1300, Math.round(22000 / uniq.length)));
+    uniq.forEach(e2 => {
+      at(t, () => { showWord(e2); award(e2.finders[0], e2.pts); reorder(); snd.spark(); });
+      t += iv;
+    });
+  }
+  t += 400;
+  at(t, () => { stage.replaceChildren(); snapTotals(); setPhase('🏆 AND THE WINNER IS…', ''); snd.up(); });
+  at(t + 1700, done);
 }
 
 function renderPodium(){
