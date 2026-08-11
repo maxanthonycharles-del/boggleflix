@@ -615,8 +615,7 @@ function connect(code, asHost){
   };
   A.fin.onMessage = (d, {peerId}) => {
     mergePlayer(peerId, {sc: {[d.r]: d.s}, fin: {[d.r]: d}}, {live: true, self: true});
-    maybeFinishCollection();
-    if (!G.playing) renderStandings();
+    maybeFinishCollection(); // refreshes whichever results screen is up
   };
   A.again.onMessage = () => { if (!G.isHost) resetToLobby(); };
 
@@ -1008,11 +1007,20 @@ function renderBoard(){
   });
   requestAnimationFrame(fitTiles);
 }
+/* The tray's proportions are measured off Netflix's board: the channel between
+   two dice is 12% of a die, and a die's corner radius is 23% of it. Those are
+   ratios, not pixels, so they're solved here from the board's real width rather
+   than guessed with clamp() — which drifted at 5×5/6×6 and on wider phones.
+   gap = .12 * die  with  W = n*die + (n-1)*gap  →  the expression below. */
 function fitTiles(){
-  const g = geom();
-  if (!g.size) return; // board isn't laid out yet — beginRound sizes it once shown
+  const W = boardEl.getBoundingClientRect().width;
+  if (!W) return; // board isn't laid out yet — beginRound sizes it once shown
+  const gap = Math.max(3, Math.round(W * .12 / (1.12 * G.n - .12)));
+  const size = (W - gap * (G.n - 1)) / G.n;
+  boardEl.style.setProperty('--gap', gap + 'px');
+  boardEl.style.setProperty('--tilerad', Math.round(size * .23) + 'px');
   // Scale the letter to the tile itself, not to the tile-plus-gap.
-  boardEl.style.setProperty('--tilefs', Math.floor(g.size * (G.n === 6 ? .48 : .52)) + 'px');
+  boardEl.style.setProperty('--tilefs', Math.floor(size * (G.n === 6 ? .48 : .52)) + 'px');
   drawPath();
 }
 window.addEventListener('resize', () => { if (tileEls.length) fitTiles(); });
@@ -1264,15 +1272,18 @@ function roundOver(wasSpectating){
   clearTimeout(G.finTimer);
   G.finTimer = setTimeout(() => { hideOverlay(); routeAfterRound(); }, wasSpectating ? 800 : 1400);
 }
+/* Every round ends the way Boggle does: the words are revealed one at a time,
+   paying whoever found them (unique finds pay double), and then the podium goes
+   up — mid-game it shows the running standings with a "next round" button, and
+   after the last round it's the final result. */
 function routeAfterRound(){
-  const last = G.round >= G.cfg.r - 1;
   if (G.mode !== 'party'){ renderLocalResults(); show('standings'); return; }
-  if (last){
-    // Boggle-Party-style finale: the game's words revealed one at a time,
-    // paying whoever found them (unique finds pay double), then the podium.
-    runReveal(() => { renderPodium(); show('podium'); snd.fanfare(); confettiBurst(); });
-  }
-  else { renderStandings(); show('standings'); }
+  const last = G.round >= G.cfg.r - 1;
+  runReveal(() => {
+    renderPodium(); show('podium');
+    confettiBurst();
+    last ? snd.fanfare() : snd.up();
+  });
 }
 function maybeFinishCollection(){ // a straggler's report arrived — refresh whichever results screen is up
   if (G.playing) return;
@@ -1316,14 +1327,19 @@ function roundBreakdown(f, reports){
   return {score, unique, vs: true, best};
 }
 function roundScore(f, round){ return f.words ? roundBreakdown(f, roundReports(round)).score : f.s; }
-function totalsFor(id, p){
+// What this player scored in one round: their reported list if it arrived, else
+// the last live score we heard gossiped for them.
+function roundScoreOf(p, round){
+  const f = p.me ? G.finsSelf[round] : p.fin && p.fin[round];
+  if (f) return roundScore(f, round);
+  return (p.sc && p.sc[round]) || 0;
+}
+// `upTo` (exclusive) totals only the rounds before it — the running total a
+// player carried INTO that round, which is where the reveal's bubbles start.
+function totalsFor(id, p, upTo){
   let total = 0;
-  const rounds = G.cfg.r;
-  for (let r=0;r<rounds;r++){
-    const f = p.me ? G.finsSelf[r] : p.fin && p.fin[r];
-    if (f) total += roundScore(f, r);
-    else if (p.sc && p.sc[r]) total += p.sc[r];
-  }
+  const rounds = upTo === undefined ? G.cfg.r : upTo;
+  for (let r=0;r<rounds;r++) total += roundScoreOf(p, r);
   return total;
 }
 function renderStandings(){
@@ -1370,8 +1386,14 @@ function renderStandings(){
   $('stand-wait').hidden = G.isHost || isLast;
   $('stand-sub').textContent = 'After round ' + (G.round+1) + ' of ' + G.cfg.r;
 }
-function renderStandingsCtas(){ if ($('scr-standings').classList.contains('active')) renderStandings(); }
+// Host migration mid-results: whichever results screen is up needs its buttons
+// re-decided, since "next round" is the host's to press.
+function renderStandingsCtas(){
+  if ($('scr-standings').classList.contains('active')) renderStandings();
+  if ($('scr-podium').classList.contains('active')) renderPodium();
+}
 $('btn-next-round').addEventListener('click', () => { if (G.isHost) hostNextRound(); });
+$('btn-podium-next').addEventListener('click', () => { if (G.isHost) hostNextRound(); });
 
 /* local (solo/daily) results reuse the standings screen */
 function renderLocalResults(){
@@ -1414,38 +1436,38 @@ $('btn-share-daily').addEventListener('click', async () => {
 });
 
 /* ---------------- podium ---------------- */
-/* Every word anyone played across the whole game, one entry per (word, round):
-   who found it, and what it pays — base points to each finder, DOUBLE when the
-   finder was alone on it (Boggle Party's unique-word bonus). Deterministic
-   from the synced fin.words, so every phone stages the identical show. */
-function buildRevealEntries(){
+/* Every word anyone played in one round: who found it, and what it pays — base
+   points to each finder, DOUBLE when the finder was alone on it (Boggle Party's
+   unique-word bonus). Deterministic from the synced fin.words, so every phone
+   stages the identical show. */
+function buildRevealEntries(round){
+  const reports = roundReports(round);
+  if (!reports.length) return [];
+  const multi = reports.length >= 2;
+  const byWord = new Map();
+  for (const rep of reports) for (const w of rep.f.words){
+    if (!byWord.has(w)) byWord.set(w, []);
+    byWord.get(w).push(rep.id);
+  }
   const entries = [];
-  for (let r = 0; r < G.cfg.r; r++){
-    const reports = roundReports(r);
-    if (!reports.length) continue;
-    const multi = reports.length >= 2;
-    const byWord = new Map();
-    for (const rep of reports) for (const w of rep.f.words){
-      if (!byWord.has(w)) byWord.set(w, []);
-      byWord.get(w).push(rep.id);
-    }
-    for (const [w, finders] of byWord){
-      const unique = multi && finders.length === 1;
-      entries.push({w, r, finders, unique, pts: scoreFor(w) * (unique ? 2 : 1)});
-    }
+  for (const [w, finders] of byWord){
+    const unique = multi && finders.length === 1;
+    entries.push({w, r: round, finders, unique, pts: scoreFor(w) * (unique ? 2 : 1)});
   }
   return entries;
 }
 let revealTimers = [];
 function clearReveal(){ revealTimers.forEach(clearTimeout); revealTimers = []; }
-/* The finale, staged like Boggle Party's: every player becomes a bubble along
-   the top, then the game's words take the centre stage ONE AT A TIME — shared
-   words first, paying everyone who spotted them, then the unique finds with
-   their ×2 flourish — while the bubbles swell with their scores and trade
-   places live. Ends on "the winner is…" and hands off to the podium. */
+/* The round's scoring show, staged like Boggle Party's: every player becomes a
+   bubble along the top carrying the total they walked in with, then THIS
+   round's words take the centre stage ONE AT A TIME — shared words first,
+   paying everyone who spotted them, then the unique finds with their ×2
+   flourish — while the bubbles swell and trade places live. Runs after every
+   round and hands off to the podium. */
 function runReveal(done){
   clearReveal();
-  const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p)}));
+  const last = G.round >= G.cfg.r - 1;
+  const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p), before: totalsFor(id,p,G.round)}));
   const maxTotal = Math.max(1, ...rows.map(r => r.total));
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const at = (ms, fn) => revealTimers.push(setTimeout(fn, ms));
@@ -1453,23 +1475,29 @@ function runReveal(done){
   // one bubble per player — these grow and reorder as the points land
   const wrap = $('reveal-bubbles'); wrap.replaceChildren();
   const bubbles = new Map();
-  rows.forEach((r, i) => {
+  // Bubbles open on the standings so far, so a multi-round game visibly
+  // continues from where the last round left it.
+  const ranked = rows.slice().sort((a,b) => b.before - a.before);
+  rows.forEach(r => {
     const b = el('div','rv-bub' + (r.p.me ? ' me' : ''));
-    b.style.order = i;
+    b.style.order = ranked.indexOf(r);
     const ring = el('div','ring');
     const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
     ring.appendChild(face);
     ring.appendChild(el('span','crown','👑'));
     b.appendChild(ring);
     b.appendChild(el('b','', r.p.me ? 'you' : r.p.name));
-    const sc = el('span','bub-score','0');
+    const sc = el('span','bub-score', String(r.before));
     b.appendChild(sc);
     wrap.appendChild(b);
-    bubbles.set(r.id, {el: b, face, sc, score: 0});
+    const bub = {el: b, face, sc, score: r.before};
+    bubbles.set(r.id, bub);
+    bub.face.style.setProperty('--grow', (1 + .55 * Math.min(1, r.before / maxTotal)).toFixed(3));
+    b.classList.toggle('lead', ranked[0] === r && r.before > 0);
   });
   const stage = $('reveal-stage'); stage.replaceChildren();
   const log = $('reveal-log'); log.replaceChildren();
-  setPhase('📊 SCORES!', 'Adding up everyone’s words…');
+  setPhase('📊 SCORES!', G.cfg.r > 1 ? 'Round ' + (G.round+1) + ' of ' + G.cfg.r : 'Adding up everyone’s words…');
   show('reveal');
 
   function setPhase(title, sub){
@@ -1499,18 +1527,20 @@ function runReveal(done){
       b.el.style.order = i;
       b.el.classList.toggle('lead', i === 0 && b.score > 0);
     });
-    if (!changed || reduced) return;
-    // FLIP: jump back to the old spot, then glide to the new one
+    if (!changed || reduced || !wrap.animate) return;
+    /* FLIP: play each bubble from where it was to where it now is. This runs as
+       a Web Animation rather than an inline transform cleared on the next frame
+       — a throttled rAF (phone locks, tab backgrounded) would never fire that
+       cleanup and the bubble would stay stuck on top of its neighbour. An
+       animation touches no inline style, so there is nothing to get stuck. */
     bubbles.forEach((b,id) => {
       const a = before.get(id), z = b.el.getBoundingClientRect();
       const dx = a.left - z.left, dy = a.top - z.top;
       if (!dx && !dy) return;
-      b.el.style.transition = 'none';
-      b.el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
-      requestAnimationFrame(() => {
-        b.el.style.transition = 'transform .45s cubic-bezier(.2,1.3,.4,1)';
-        b.el.style.transform = '';
-      });
+      b.el.animate(
+        [{transform: 'translate(' + dx + 'px,' + dy + 'px)'}, {transform: 'none'}],
+        {duration: 450, easing: 'cubic-bezier(.2,1.3,.4,1)'}
+      );
     });
   }
   function showWord(e2){
@@ -1539,7 +1569,6 @@ function runReveal(done){
     card.appendChild(row);
     if (e2.unique) card.appendChild(el('div','rv-x2','UNIQUE — DOUBLE POINTS!'));
     else if (e2.finders.length > 1) card.appendChild(el('div','rv-shared', e2.finders.length + ' of you found it'));
-    if (G.cfg.r > 1) card.appendChild(el('span','rv-round','R' + (e2.r + 1)));
     stage.appendChild(card);
     const lc = el('span','rv-logchip' + (e2.unique ? ' u' : ''), word);
     log.appendChild(lc);
@@ -1554,14 +1583,14 @@ function runReveal(done){
     reorder();
   }
 
-  const entries = buildRevealEntries();
+  const entries = buildRevealEntries(G.round);
   // small scores first so every phase builds to its biggest word
   const shared = entries.filter(e2 => !e2.unique).sort((a,b) => a.pts - b.pts || a.w.localeCompare(b.w));
   const uniq = entries.filter(e2 => e2.unique).sort((a,b) => a.pts - b.pts || a.w.localeCompare(b.w));
 
   if (reduced || !entries.length){
     snapTotals();
-    if (!entries.length) $('reveal-sub').textContent = 'No words this game… the sequel will be better!';
+    if (!entries.length) $('reveal-sub').textContent = 'No words that round… the sequel will be better!';
     at(reduced ? 900 : 2000, done);
     return;
   }
@@ -1588,13 +1617,24 @@ function runReveal(done){
     });
   }
   t += 400;
-  at(t, () => { stage.replaceChildren(); snapTotals(); setPhase('🏆 AND THE WINNER IS…', ''); snd.up(); });
+  at(t, () => {
+    stage.replaceChildren(); snapTotals();
+    setPhase(last ? '🏆 AND THE WINNER IS…' : '📈 WHO’S AHEAD?',
+             last ? '' : 'after round ' + (G.round+1) + ' of ' + G.cfg.r);
+    snd.up();
+  });
   at(t + 1700, done);
 }
 
 function renderPodium(){
   if (G.mode !== 'party') return;
-  const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p)})).sort((a,b) => b.total - a.total);
+  const last = G.round >= G.cfg.r - 1;
+  const multi = G.cfg.r > 1;
+  const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p), rd: roundScoreOf(p, G.round)}))
+    .sort((a,b) => b.total - a.total);
+  $('podium-title').textContent = last ? '🏆 Final results!' : '🏆 Round ' + (G.round+1) + ' podium';
+  $('podium-sub').hidden = last;
+  $('podium-sub').textContent = 'Totals after round ' + (G.round+1) + ' of ' + G.cfg.r;
   const stage = $('podium-stage'); stage.replaceChildren();
   const order = [1,0,2]; // silver, gold, bronze display order
   const podClasses = ['p2','p1','p3'];
@@ -1608,6 +1648,8 @@ function renderPodium(){
     const block = el('div','block');
     block.appendChild(el('span','medal', ['🥇','🥈','🥉'][rankIdx] || ''));
     block.appendChild(el('span','score', r.total + ' pts'));
+    // mid-game the interesting number is what this round just added
+    if (multi) block.appendChild(el('span','delta', '+' + r.rd + ' this round'));
     pod.appendChild(block);
     stage.appendChild(pod);
   });
@@ -1618,39 +1660,61 @@ function renderPodium(){
     const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
     row.appendChild(face);
     const info = el('div','info'); info.appendChild(el('b','', r.p.me ? r.p.name + ' (you)' : r.p.name));
+    if (multi) info.appendChild(el('small','', '+' + r.rd + ' this round'));
     row.appendChild(info);
     row.appendChild(el('span','pts', String(r.total)));
     rest.appendChild(row);
   });
-  // awards
+  // awards — the whole-game honours, so they wait for the final podium.
+  // Mid-game the round's own headline word takes that spot instead.
   const aw = $('awards'); aw.replaceChildren();
-  let longest = null, most = null;
-  for (const r of rows){
-    for (let rd=0; rd<G.cfg.r; rd++){
-      const f = r.p.me ? G.finsSelf[rd] : r.p.fin && r.p.fin[rd];
-      if (!f) continue;
-      if (f.b && (!longest || f.b.length > longest.word.length)) longest = {name:r.p.name, word:f.b};
+  if (!last){
+    const top = buildRevealEntries(G.round).sort((a,b) => b.pts - a.pts)[0];
+    if (top){
+      const who = top.finders.map(id => {
+        const r = rows.find(x => x.id === id);
+        return r ? (r.p.me ? 'you' : r.p.name) : 'someone';
+      }).join(' & ');
+      const a = el('div','award'); a.appendChild(el('span','ic', top.unique ? '✨' : '🔤'));
+      const t = el('span','txt'); t.append('Word of the round: ');
+      t.appendChild(el('b','', top.w.toUpperCase()));
+      t.append(' — +' + top.pts + (top.unique ? ' (unique!) to ' : ' to ') + who);
+      a.appendChild(t); aw.appendChild(a);
     }
-    const words = (() => { let s=0; for (let rd=0;rd<G.cfg.r;rd++){ const f = r.p.me ? G.finsSelf[rd] : r.p.fin && r.p.fin[rd]; if (f) s += f.w; } return s; })();
-    if (!most || words > most.count) most = {name:r.p.name, count:words};
   }
-  if (rows[0] && rows[0].total > 0){
-    const a = el('div','award'); a.appendChild(el('span','ic','👑'));
-    const t = el('span','txt'); t.append('Word Champion: '); t.appendChild(el('b','', rows[0].p.name)); t.append(' — ' + rows[0].total + ' pts');
-    a.appendChild(t); aw.appendChild(a);
+  if (last){
+    let longest = null, most = null;
+    for (const r of rows){
+      for (let rd=0; rd<G.cfg.r; rd++){
+        const f = r.p.me ? G.finsSelf[rd] : r.p.fin && r.p.fin[rd];
+        if (!f) continue;
+        if (f.b && (!longest || f.b.length > longest.word.length)) longest = {name:r.p.name, word:f.b};
+      }
+      const words = (() => { let s=0; for (let rd=0;rd<G.cfg.r;rd++){ const f = r.p.me ? G.finsSelf[rd] : r.p.fin && r.p.fin[rd]; if (f) s += f.w; } return s; })();
+      if (!most || words > most.count) most = {name:r.p.name, count:words};
+    }
+    if (rows[0] && rows[0].total > 0){
+      const a = el('div','award'); a.appendChild(el('span','ic','👑'));
+      const t = el('span','txt'); t.append('Word Champion: '); t.appendChild(el('b','', rows[0].p.name)); t.append(' — ' + rows[0].total + ' pts');
+      a.appendChild(t); aw.appendChild(a);
+    }
+    if (longest && longest.word){
+      const a = el('div','award'); a.appendChild(el('span','ic','📏'));
+      const t = el('span','txt'); t.append('Longest word: '); t.appendChild(el('b','', longest.word.toUpperCase())); t.append(' by ' + longest.name);
+      a.appendChild(t); aw.appendChild(a);
+    }
+    if (most && most.count > 0){
+      const a = el('div','award'); a.appendChild(el('span','ic','⚡'));
+      const t = el('span','txt'); t.append('Word machine: '); t.appendChild(el('b','', most.name)); t.append(' — ' + most.count + ' words');
+      a.appendChild(t); aw.appendChild(a);
+    }
   }
-  if (longest && longest.word){
-    const a = el('div','award'); a.appendChild(el('span','ic','📏'));
-    const t = el('span','txt'); t.append('Longest word: '); t.appendChild(el('b','', longest.word.toUpperCase())); t.append(' by ' + longest.name);
-    a.appendChild(t); aw.appendChild(a);
-  }
-  if (most && most.count > 0){
-    const a = el('div','award'); a.appendChild(el('span','ic','⚡'));
-    const t = el('span','txt'); t.append('Word machine: '); t.appendChild(el('b','', most.name)); t.append(' — ' + most.count + ' words');
-    a.appendChild(t); aw.appendChild(a);
-  }
-  $('btn-again').hidden = !G.isHost;
+  $('btn-podium-next').hidden = !(G.isHost && !last);
+  $('btn-again').hidden = !(G.isHost && last);
   $('podium-wait').hidden = G.isHost;
+  $('podium-wait').textContent = last
+    ? 'Waiting for the host…'
+    : 'Waiting for the host to start round ' + (G.round+2) + '…';
 }
 
 /* ---------------- confetti ---------------- */
