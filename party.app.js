@@ -489,7 +489,10 @@ async function checkForUpdate(){
     const r = await fetch('version.txt?t=' + Date.now(), {cache: 'no-store'});
     if (!r.ok) return;
     const v = (await r.text()).trim();
-    if (v && v !== BUILD){ updateReady = v; showUpdateBar(); }
+    // Must LOOK like a build stamp. A 404 page, a captive-portal login or any
+    // other HTML would otherwise read as "new version" and nag forever.
+    if (!/^[0-9a-f]{8,16}$/.test(v) || v === BUILD) return;
+    updateReady = v; showUpdateBar();
   } catch(e){}
 }
 function showUpdateBar(){
