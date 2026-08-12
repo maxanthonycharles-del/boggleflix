@@ -27,7 +27,13 @@
   var BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
 
   var HEARTBEAT_MS = 3000;   // presence ping cadence
-  var PEER_TTL_MS  = 13000;  // silence before we treat a peer as gone
+  /* Silence before we treat a peer as gone. This was 13s, which is far too
+     twitchy for phones: locking the screen, a notification taking over, a cell
+     handover or a backgrounded tab all stop the heartbeat for longer than that,
+     and the whole party would watch a live player "leave" mid-game. Ten missed
+     pings, and even then only after we've prodded them once and waited again. */
+  var PEER_TTL_MS  = 30000;
+  var PEER_KILL_MS = 45000;  // second strike: only now is a peer really gone
 
   function joinRoom(config, roomId) {
     var appId = (config && config.appId) || 'app';
@@ -90,10 +96,47 @@
     // Extra rapid pings right after joining so existing members greet us fast
     // even if a broker connection was still warming up on our first heartbeat.
     var burst = 0, burstT = setInterval(function () { publish({ c: '__hi', s: selfId, i: hex(8) }); if (++burst >= 6) clearInterval(burstT); }, 700);
+    /* Two-strike reaping: at the first timeout we only ask "are you there?" —
+       an extra ping that any live phone answers within a heartbeat. A peer is
+       dropped solely when it has stayed silent through that as well. */
     var reap = setInterval(function () {
-      var now = Date.now();
-      peers.forEach(function (ts, id) { if (now - ts > PEER_TTL_MS) drop(id); });
+      var now = Date.now(), poke = false;
+      peers.forEach(function (ts, id) {
+        var quiet = now - ts;
+        if (quiet > PEER_KILL_MS) drop(id);
+        else if (quiet > PEER_TTL_MS) poke = true;
+      });
+      if (poke) publish({ c: '__hi', s: selfId, i: hex(8) });
     }, 3000);
+
+    /* Coming back to the app is the moment presence matters most: the phone has
+       just been unlocked or the tab refocused, our sockets may have been frozen
+       for minutes, and everyone else is a few seconds from writing us off. Say
+       hello immediately and drag any dead broker connection back up. */
+    function revive() {
+      if (!alive) return;
+      for (var i = 0; i < clients.length; i++) {
+        var c = clients[i];
+        if (c && !c.connected && typeof c.reconnect === 'function') { try { c.reconnect(); } catch (e) {} }
+      }
+      var n = 0, t = setInterval(function () {
+        publish({ c: '__hi', s: selfId, i: hex(8) });
+        if (++n >= 5 || !alive) clearInterval(t);
+      }, 500);
+    }
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) revive(); });
+    window.addEventListener('online', revive);
+    window.addEventListener('pageshow', revive);
+    window.addEventListener('focus', revive);
+
+    /* Last line of defence: if every broker link is down for a while, mqtt.js's
+       own retry has not got us back, so kick each client by hand. */
+    var watchdog = setInterval(function () {
+      if (!alive) return;
+      var up = false;
+      for (var i = 0; i < clients.length; i++) if (clients[i] && clients[i].connected) up = true;
+      if (!up) revive();
+    }, 8000);
 
     return {
       makeAction: function (name) {
@@ -114,7 +157,7 @@
       leave: function () {
         alive = false;
         publish({ c: '__bye', s: selfId, i: hex(8) });
-        clearInterval(hb); clearInterval(reap); clearInterval(burstT);
+        clearInterval(hb); clearInterval(reap); clearInterval(burstT); clearInterval(watchdog);
         setTimeout(function () { clients.forEach(function (c) { try { c.end(true); } catch (e) {} }); }, 200);
       }
     };

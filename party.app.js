@@ -393,6 +393,9 @@ const G = {   // current game context
   lock: null,
   finTimer: 0,
   chat: [],            // party chat, newest last — lives as long as the room does
+  pendingStart: null,  // host moved on while we were still playing — applied at round end
+  pendingNext: null,
+  pendingAgain: false,
   selOk: false,        // the trace currently spells a real word
   specTimer: 0,        // spectator watch interval
   gossipTimer: 0,      // periodic roster/score broadcast
@@ -478,7 +481,11 @@ function refreshHome(){
   // An invite link's code waits here as one obvious tap instead of joining by
   // itself — see boot(). Once used (or dismissed) the banner is gone.
   $('invite-banner').hidden = !pendingRoom;
-  if (pendingRoom) $('btn-invite-join').textContent = '🎟️\xa0 Join party ' + pendingRoom;
+  if (pendingRoom){
+    $('btn-invite-join').textContent = (pendingIsRejoin ? '🔄\xa0 Rejoin party ' : '🎟️\xa0 Join party ') + pendingRoom;
+    document.querySelector('#invite-banner .invite-note').textContent =
+      pendingIsRejoin ? 'You were in a party — jump back in!' : 'Someone invited you to their party!';
+  }
   const daily = store.get('daily-' + todayKey(), null);
   $('daily-done').hidden = daily === null;
   if (daily !== null) $('daily-done').textContent = daily + ' PTS ✓';
@@ -490,11 +497,15 @@ function refreshHome(){
 $('btn-sound').addEventListener('click', toggleSound);
 $('btn-game-sound').addEventListener('click', toggleSound);
 $('btn-invite-join').addEventListener('click', () => {
-  const c = pendingRoom; pendingRoom = null;
+  const c = pendingRoom; pendingRoom = null; pendingIsRejoin = false;
   refreshHome();
   if (c) joinParty(c);
 });
-$('btn-invite-no').addEventListener('click', () => { pendingRoom = null; refreshHome(); snd.tick(1); });
+$('btn-invite-no').addEventListener('click', () => {
+  pendingRoom = null;
+  if (pendingIsRejoin){ pendingIsRejoin = false; store.set('lastparty', null); }  // don't nag again
+  refreshHome(); snd.tick(1);
+});
 $('btn-host').addEventListener('click', () => hostParty());
 $('btn-join').addEventListener('click', () => { $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80); });
 $('btn-join-back').addEventListener('click', () => show('home'));
@@ -581,6 +592,7 @@ function connect(code, asHost){
   G.mode = 'party'; G.code = code; G.isHost = asHost; G.joinedAt = Date.now();
   G.peers = new Map(); G.finsSelf = {}; G.round = 0; G.seeds = [];
   G.spectating = false; G.seq = 0;
+  G.pendingStart = null; G.pendingNext = null; G.pendingAgain = false;
   G.chat = []; renderChat();   // a new party starts with an empty chat
   lobbySig = null;  // new room — force the roster to rebuild
   if (asHost) G.cfg = store.get('cfg', {g:4, t:180, m:3, r:3});
@@ -672,7 +684,15 @@ function connect(code, asHost){
     mergePlayer(peerId, {sc: {[d.r]: d.s}, fin: {[d.r]: d}}, {live: true, self: true});
     maybeFinishCollection(); // refreshes whichever results screen is up
   };
-  A.again.onMessage = () => { if (!G.isHost) resetToLobby(); };
+  /* Never yank a phone out of a live round. The host can reach the podium and
+     tap "play again" while a slower phone is still playing — a straggler who
+     started late, or one whose end-of-round timer was throttled in the
+     background. Remember the request and honour it when their round is over. */
+  A.again.onMessage = () => {
+    if (G.isHost) return;
+    if (G.playing){ G.pendingAgain = true; return; }
+    resetToLobby();
+  };
   A.chat.onMessage = (d, {peerId}) => {
     const p = G.peers.get(peerId) || {};
     addChat({id: peerId, n: (d && d.n) || p.name || 'someone', e: (d && d.e) || p.emoji || '🙂', t: d && d.t});
@@ -746,8 +766,19 @@ function colorOf(id){
   const idx = activePlayers().findIndex(([pid]) => pid === id);
   return COLORS[(idx >= 0 ? idx : 0) % COLORS.length];
 }
+/* A phone that goes quiet for a few seconds — screen lock, a notification, a
+   cell handover, a backgrounded tab — is NOT gone. Migrating the crown on that
+   silence is what let a second phone appoint itself host mid-game and then
+   broadcast a round change that reset everyone. The crown only moves after a
+   long, confirmed silence. */
+const HOST_SILENCE_MS = 30000;
+function stillWithUs(id, p){
+  if (!p.gone) return true;
+  return Date.now() - (p.seen || 0) < HOST_SILENCE_MS;   // recently gone = give them a moment
+}
 function electHost(){
-  const act = activePlayers();
+  // Include anyone who has only just fallen quiet, so a blip can't crown anyone.
+  const act = everyone().filter(([id,p]) => stillWithUs(id, p));
   if (!act.length) return;
   // Whoever opened the room claims host, and everyone honours the claim. Phones
   // disagree about the wall clock, so joinedAt must never decide this: if the
@@ -760,7 +791,10 @@ function electHost(){
      was heard, throwing away a pick made in between. Wait out a short grace
      period first; a genuinely host-less room still migrates, just a beat later. */
   if (!claimers.length && !G.isHost && act.length > 1 && Date.now() - G.joinedAt < HOST_GRACE_MS) return;
-  const [hostId] = (claimers.length ? claimers : act).map(([id]) => id).sort();
+  const pool = (claimers.length ? claimers : act);
+  // prefer a phone we're actually hearing from over one that's merely not-yet-timed-out
+  const live = pool.filter(([,p]) => !p.gone);
+  const [hostId] = (live.length ? live : pool).map(([id]) => id).sort();
   const wasHost = G.isHost;
   G.isHost = hostId === Trystero.selfId;
   for (const [id,p] of G.peers) p.host = id === hostId;
@@ -829,11 +863,24 @@ $('chat-input').addEventListener('focus', () => {
 });
 
 /* ---------------- lobby ---------------- */
-let pendingRoom = null;
+let pendingRoom = null, pendingIsRejoin = false;
+/* Phones get killed: iOS reclaims a backgrounded tab, someone hits reload, a
+   browser crashes. That used to end the party for that player — the app boots
+   on the homepage with no idea where they were. Leave a breadcrumb instead. */
+function rememberParty(){
+  if (G.mode !== 'party' || !G.code) return;
+  store.set('lastparty', {code: G.code, at: Date.now()});
+}
+function recentParty(){
+  const p = store.get('lastparty', null);
+  if (!p || !p.code) return null;
+  return (Date.now() - (p.at || 0) < 20 * 60 * 1000) ? p.code : null;   // 20 min
+}
 function hostParty(){ connect(makeCode(), true); }
 function joinParty(code){ connect(code, false); }
 
 function openLobby(){
+  rememberParty();
   renderRoomCode();
   moveSettingsTo('lobby-set-slot');
   renderSettings();
@@ -1013,6 +1060,9 @@ function handleStart(d){
   // it would restart the board and wipe the words we've found.
   const key = (d.gid || '?') + ':' + (d.round || 0);
   if (key === G.beganKey) return;
+  // A start for some OTHER game while this phone is mid-round would wipe the
+  // words it has found. Hold it until the round is over — see routeAfterRound.
+  if (G.playing){ G.pendingStart = d; return; }
   G.gameId = d.gid || G.gameId;
   G.seeds = d.seeds || [];
   G.cfg = sanitizeCfg(d.cfg || {});
@@ -1032,13 +1082,26 @@ function hostNextRound(){
   beginRound();
 }
 function handleNext(d){
-  G.round = d.round;
+  /* This used to begin the round unconditionally, which meant ANY stray "next
+     round" — a repeat, one from a phone that briefly self-appointed as host
+     while the real host's phone was silent, or one that lands while a slower
+     phone is still playing — restarted the board and wiped every word that
+     player had found. It looked exactly like being booted mid-game. Only ever
+     move FORWARD, and never out of a round that is still being played. */
+  const round = d.round | 0;
+  const key = (G.gameId || '?') + ':' + round;
+  if (key === G.beganKey) return;         // already in it
+  if (round < G.round) return;            // never go backwards
+  if (G.playing && round <= G.round) return;
+  if (G.playing){ G.pendingNext = d; return; }   // finish this round first
+  G.round = round;
   G.clockOffset = (d.hostNow || Date.now()) - Date.now();
   G.startAt = (d.startAt || Date.now()) - G.clockOffset;
   beginRound();
 }
 function resetToLobby(){
   clearReveal();
+  podiumSig = null;
   G.seeds = []; G.round = 0; G.finsSelf = {};
   for (const [,p] of G.peers){ p.sc = {}; p.fin = {}; }
   G.playing = false;
@@ -1077,6 +1140,7 @@ let tileEls = [];
 const boardEl = $('board'), pathSvg = $('path-svg'), pill = $('word-pill');
 function beginRound(){
   ensureDict();
+  rememberParty();   // a phone killed mid-round can find its way back
   clearReveal();
   $('scr-game').classList.remove('final-countdown');  // clear any leftover pulse
   G.beganKey = (G.gameId || '?') + ':' + G.round;  // ignore host's re-broadcasts of this round
@@ -1459,7 +1523,13 @@ function roundOver(wasSpectating){
    up — mid-game it shows the running standings with a "next round" button, and
    after the last round it's the final result. */
 function routeAfterRound(){
+  podiumSig = null;   // a new round's podium always rebuilds
   if (G.mode !== 'party'){ renderLocalResults(); show('standings'); return; }
+  /* Anything the round was protecting us from gets honoured now: the host may
+     have moved on while this phone was still finishing. */
+  if (G.pendingStart){ const d = G.pendingStart; G.pendingStart = null; G.pendingNext = null; G.pendingAgain = false; handleStart(d); return; }
+  if (G.pendingNext){ const d = G.pendingNext; G.pendingNext = null; G.pendingAgain = false; handleNext(d); return; }
+  if (G.pendingAgain){ G.pendingAgain = false; resetToLobby(); return; }
   const last = G.round >= G.cfg.r - 1;
   runReveal(() => {
     renderPodium(); show('podium');
@@ -1889,12 +1959,22 @@ function runReveal(done){
   at(t + 2100, done);
 }
 
+/* The podium is re-rendered by every arriving message AND by the 3s gossip
+   tick, and it used to rebuild the whole stage each time — so the columns
+   restarted their rise-up animation every three seconds and the avatars
+   flashed, right in front of everyone reading the scores. Rebuild only when
+   the standings have actually changed (same fix as the lobby roster). */
+let podiumSig = null;
 function renderPodium(){
   if (G.mode !== 'party') return;
   const last = G.round >= G.cfg.r - 1;
   const multi = G.cfg.r > 1;
   const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p), rd: roundScoreOf(p, G.round)}))
     .sort((a,b) => b.total - a.total);
+  const sig = G.round + '|' + last + '|' + G.isHost + '|' +
+    rows.map(r => r.id + ':' + r.total + ':' + r.rd + ':' + (r.p.gone?1:0) + ':' + r.p.name + r.p.emoji).join(',');
+  if (sig === podiumSig) return;
+  podiumSig = sig;
   $('podium-title').textContent = last ? '🏆 Final results!' : '🏆 Round ' + (G.round+1) + ' podium';
   $('podium-sub').hidden = last;
   $('podium-sub').textContent = 'Totals after round ' + (G.round+1) + ' of ' + G.cfg.r;
@@ -2019,6 +2099,12 @@ function confettiBurst(){
     // Don't let the code linger in the address bar either — a reload would
     // bring the banner back long after that party ended.
     try { history.replaceState(null, '', location.pathname); } catch(e){}
+  }
+  if (!pendingRoom){
+    // No invite link, but this phone was in a party minutes ago — it was almost
+    // certainly killed mid-game. Offer the way back: one tap, never automatic.
+    const back = recentParty();
+    if (back){ pendingRoom = back; pendingIsRejoin = true; }
   }
   refreshHome();
   if (!P.name){ openName(); return; }
