@@ -30,6 +30,9 @@ cocain damn goddam spunk testic vagin erot clitor puss ejaculat
 
 # Block these exact words only — the stem embeds in innocent words
 # (semen/basement, rape/grape, meth/method, hell/hello, turd/sturdy...).
+# The tail of this list is slurs and words for disability/ethnicity that a
+# family game should not be putting in front of a child as a suggestion. They
+# are ordinary entries in ENABLE, which is a Scrabble list, not a style guide.
 EXACT = """
 anal anally anality analities anus anuses arse arses boob boobs
 bugger buggers buggered buggering buggery buggeries
@@ -43,6 +46,11 @@ retard retards retarded retarding retardate retardates
 semen semens shag shags shagged shagging shithead shitheads
 spic spics spick spicks tits tittie titties titty turd turds
 wank wanks wanked wanking wanker wankers
+squaw squaws squawman squawmen gyp gyps gypped gypping gypper gyppers
+coolie coolies mulatto mulattos mulattoes redskin redskins savages
+half-breed halfbreed halfbreeds wetback wetbacks quadroon quadroons
+octoroon octoroons eskimo eskimos lunatic lunatics imbecile imbeciles
+cripple cripples crippled crippling spastic spastics
 """.split()
 
 EXACT = set(EXACT)
