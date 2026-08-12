@@ -17,8 +17,17 @@
   --stage2:#D6146C;    /* stage gradient bottom */
   --navy:#1E2A5E;      /* ink on bright */
   --navy-soft:#44508A;
-  --cream:#FFF8E7;     /* tile face */
+  --cream:#FFF8E7;     /* card / chip face */
   --cream-edge:#E5D9BC;
+  /* The board itself, matched to Netflix's: deep purple dice with white
+     letters, sitting straight on the gradient with no tray around them, and a
+     bright green face for the letters under your finger. */
+  --die:#3A2160;
+  --die-2:#2B1746;
+  --die-edge:#1B0E2E;
+  --die-lit:#5BF19A;
+  --die-lit-2:#2FDD79;
+  --die-lit-edge:#12A055;
   --tray1:#2C5BEA;     /* board tray blue */
   --tray2:#1D3FB8;
   --white:#FFFFFF;
@@ -277,8 +286,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
    The width/max-height/aspect line above it is the fallback for browsers
    without container units. Replaces an older min()/dvh/aspect combo that some
    phones rendered shifted to one side. */
-.tray{background:linear-gradient(170deg,var(--tray1),var(--tray2));border-radius:24px;padding:clamp(5px,1.5vw,8px);
-  box-shadow:0 8px 0 #14297A,0 18px 40px rgba(120,8,55,.3),inset 0 2px 8px rgba(255,255,255,.25);
+.tray{background:none;border-radius:24px;padding:0;box-shadow:none;
   width:100%;max-height:100%;aspect-ratio:1;position:relative;
   width:100cqmin;height:100cqmin;max-height:100cqmin}
 /* --gap and --tilerad are solved from the board's measured width in fitTiles()
@@ -290,23 +298,26 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
    `0 4px 0` shadow sits inside the channel under each die, so the vertical gaps
    read narrower than the horizontal ones and the grid looks subtly off. Inset
    keeps all four channels identical — and it's how Netflix's dice are shaded. */
-.tile{position:relative;border-radius:var(--tilerad,12px);display:grid;place-items:center;background:var(--cream);
-  box-shadow:inset 0 -5px 0 var(--cream-edge),inset 0 3px 3px rgba(255,255,255,.95);transition:transform .09s ease,background .1s ease,box-shadow .1s ease}
-.tile span{font-family:var(--display);font-weight:800;line-height:1;color:var(--navy);pointer-events:none;font-size:var(--tilefs,34px);
+.tile{position:relative;border-radius:var(--tilerad,12px);display:grid;place-items:center;
+  background:linear-gradient(180deg,var(--die),var(--die-2));
+  box-shadow:inset 0 -5px 0 var(--die-edge),inset 0 2px 2px rgba(255,255,255,.12),0 6px 16px rgba(60,5,40,.28);
+  transition:transform .09s ease,background .1s ease,box-shadow .1s ease}
+.tile span{font-family:var(--display);font-weight:800;line-height:1;color:#fff;pointer-events:none;font-size:var(--tilefs,34px);
   /* the bevel eats 5px off the bottom — nudge the letter into the true centre */
   transform:translateY(-2px)}
-.tile.sel{background:var(--gold);box-shadow:inset 0 -5px 0 var(--gold-edge),0 0 16px rgba(255,217,60,.7);transform:scale(1.08);z-index:2}
-.tile.flash-good{background:var(--green);box-shadow:inset 0 -5px 0 var(--green-edge)}
-.tile.flash-good span{color:#fff}
-/* The moment the traced letters spell something real they turn green under your
-   finger — the same live "this one counts" tell Boggle Party gives you. */
-.tile.sel.ok{background:linear-gradient(180deg,#7CEFAB,#31D97A);
-  box-shadow:inset 0 -5px 0 #12A055,0 0 20px rgba(49,217,122,.75);transform:scale(1.1)}
-.tile.sel.ok span{color:#fff;text-shadow:0 2px 0 rgba(9,90,48,.4)}
-.path-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;opacity:.65;transition:opacity .12s}
+/* The whole box goes green under your finger — the tell from Boggle Party. */
+.tile.sel{background:linear-gradient(180deg,var(--die-lit),var(--die-lit-2));
+  box-shadow:inset 0 -5px 0 var(--die-lit-edge),0 0 10px rgba(91,241,154,.35);transform:scale(1.05);z-index:2}
+.tile.sel span{color:#10331F}
+/* …and brighter still once those letters actually spell something. */
+.tile.sel.ok{box-shadow:inset 0 -5px 0 var(--die-lit-edge),0 0 18px rgba(91,241,154,.7);transform:scale(1.08)}
+.tile.flash-good{background:linear-gradient(180deg,var(--die-lit),var(--die-lit-2));
+  box-shadow:inset 0 -5px 0 var(--die-lit-edge)}
+.tile.flash-good span{color:#10331F}
+.path-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;opacity:.3;transition:opacity .12s}
 /* Once the dice themselves go green the trail has done its job — fade it back
    so it stops veiling the white letters underneath. */
-.path-svg.ok{opacity:.34}
+.path-svg.ok{opacity:.16}
 /* the floatpop keyframe is still the reveal bubbles' score pop (.bub-pop) */
 @keyframes floatpop{0%{transform:translate(-50%,0) scale(.6);opacity:0}20%{opacity:1;transform:translate(-50%,-10px) scale(1.15)}100%{transform:translate(-50%,-52px) scale(1);opacity:0}}
 .found-strip{min-height:56px}
@@ -385,10 +396,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 @keyframes wordin{from{transform:scale(.5) rotate(-3deg);opacity:0}}
 .rv-tiles{display:flex;gap:5px}
 .rv-tiles span{width:calc(var(--ts,30px)*1.6);height:calc(var(--ts,30px)*1.6);border-radius:24%;display:grid;place-items:center;
-  font-family:var(--display);font-weight:800;font-size:var(--ts,30px);line-height:1;color:var(--navy);background:var(--cream);
-  box-shadow:0 4px 0 var(--cream-edge),0 10px 20px rgba(130,10,62,.28);animation:rvtile .35s cubic-bezier(.2,1.6,.4,1) backwards}
+  font-family:var(--display);font-weight:800;font-size:var(--ts,30px);line-height:1;color:#fff;
+  background:linear-gradient(180deg,var(--die),var(--die-2));
+  box-shadow:inset 0 -4px 0 var(--die-edge),0 8px 18px rgba(60,5,40,.3);animation:rvtile .35s cubic-bezier(.2,1.6,.4,1) backwards}
 @keyframes rvtile{from{transform:translateY(-26px) rotate(-8deg) scale(.5);opacity:0}}
-.rv-word.unique .rv-tiles span{background:linear-gradient(180deg,#FFEE8F,#FFD93C);box-shadow:0 4px 0 var(--gold-edge),0 0 26px rgba(255,217,60,.8)}
+.rv-word.unique .rv-tiles span{background:linear-gradient(180deg,#FFEE8F,#FFD93C);color:var(--navy);
+  box-shadow:inset 0 -4px 0 var(--gold-edge),0 0 26px rgba(255,217,60,.8)}
 /* unique words get a slowly turning ray-burst behind the dice */
 .rv-word.unique::before{content:'';position:absolute;left:50%;top:50%;width:340px;height:340px;margin:-170px 0 0 -170px;z-index:-1;
   background:repeating-conic-gradient(rgba(255,236,140,.45) 0 9deg,transparent 9deg 30deg);
@@ -475,6 +488,19 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
    One panel, moved between the two screens the same way the settings card is. */
 .chat-panel{display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.2);
   border:2px solid rgba(255,255,255,.45);border-radius:20px;padding:10px;margin-top:10px}
+.chat-bar{display:flex;align-items:center;gap:9px;width:100%;margin-top:10px;text-align:left;
+  background:rgba(255,255,255,.9);border-radius:999px;padding:9px 10px 9px 14px;box-shadow:0 4px 0 rgba(30,42,94,.2);
+  transition:transform .1s ease,box-shadow .1s ease}
+.chat-bar:active{transform:translateY(2px);box-shadow:0 2px 0 rgba(30,42,94,.2)}
+.chat-bar .cb-ic{font-size:18px;line-height:1}
+.chat-bar .cb-text{flex:1;min-width:0;font-weight:600;font-size:14px;color:var(--navy);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-bar .cb-badge{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12px;color:#fff;background:var(--pink);
+  border-radius:999px;min-width:22px;text-align:center;padding:3px 7px;animation:rvbump .35s ease}
+.chat-bar .cb-go{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12px;letter-spacing:.06em;color:#fff;
+  background:var(--blue);border-radius:999px;padding:6px 12px;box-shadow:0 2px 0 var(--blue-edge)}
+.chat-sheet .chat-panel{margin:0;background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.5)}
+.chat-sheet .chat-log{max-height:46vh;min-height:96px;justify-content:flex-end}
 .chat-log{display:flex;flex-direction:column;gap:6px;max-height:136px;overflow-y:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .chat-log::-webkit-scrollbar{display:none}
 .chat-empty{text-align:center;color:#fff;font-weight:600;font-size:12.5px;opacity:.85;padding:5px 0;text-shadow:0 1px 0 rgba(150,15,72,.3)}
@@ -624,10 +650,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     <!-- #settings-card lives in the settings modal and is moved in here whenever
          the lobby opens — one card, so home and lobby can never drift apart. -->
     <div id="lobby-set-slot"></div>
+    <div id="lobby-chat-slot"></div>
     <div class="lobby-cta">
       <button class="btn gold big" id="btn-start">Start the game!</button>
     </div>
-    <div id="lobby-chat-slot"></div>
   </section>
 
   <!-- ============ GAME ============ -->
@@ -697,21 +723,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     <div class="podium-stage" id="podium-stage"></div>
     <div class="stand-list" id="podium-rest"></div>
     <div class="awards" id="awards"></div>
+    <div id="podium-chat-slot"></div>
     <div class="stand-cta">
       <button class="btn green big" id="btn-podium-next" hidden>Next round!</button>
       <button class="btn gold big" id="btn-again" hidden>Play again — same crew!</button>
       <div class="lobby-wait" id="podium-wait" hidden>Waiting for the host…</div>
       <button class="chip-btn" id="btn-podium-home" style="align-self:center">Back to menu</button>
-    </div>
-    <!-- the chat panel lands here after a game — see mountChat() -->
-    <div id="podium-chat-slot">
-      <div class="chat-panel" id="chat-panel" hidden>
-        <div class="chat-log" id="chat-log"><div class="chat-empty" id="chat-empty">Say something to the party! 👋</div></div>
-        <div class="chat-row">
-          <input id="chat-input" class="chat-input" maxlength="120" placeholder="Type a message…" autocomplete="off" spellcheck="false" aria-label="Chat message">
-          <button class="chat-send" id="chat-send">Send</button>
-        </div>
-      </div>
     </div>
   </section>
 
@@ -719,6 +736,30 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     <div class="overlay-big" id="overlay-big">3</div>
     <div class="overlay-sub" id="overlay-sub"></div>
   </div></div>
+
+  <!-- Chat: a one-line bar that goes wherever it is needed (lobby, podium) and
+       opens the panel as a sheet. It used to be the whole panel, parked at the
+       bottom of the podium below the fold — you had to know it was there. -->
+  <button class="chat-bar" id="chat-bar" hidden aria-haspopup="dialog">
+    <span class="cb-ic">💬</span>
+    <span class="cb-text" id="chat-bar-text">Say something to the party!</span>
+    <span class="cb-badge" id="chat-badge" hidden>0</span>
+    <span class="cb-go">OPEN</span>
+  </button>
+  <div class="modal" id="chat-modal" hidden role="dialog" aria-modal="true" aria-label="Party chat">
+    <div class="modal-card chat-sheet">
+      <div id="chat-sheet-slot">
+        <div class="chat-panel" id="chat-panel">
+          <div class="chat-log" id="chat-log"><div class="chat-empty" id="chat-empty">Say something to the party! 👋</div></div>
+          <div class="chat-row">
+            <input id="chat-input" class="chat-input" maxlength="120" placeholder="Type a message…" autocomplete="off" spellcheck="false" aria-label="Chat message">
+            <button class="chat-send" id="chat-send">Send</button>
+          </div>
+        </div>
+      </div>
+      <button class="btn green big" id="btn-chat-done">Done</button>
+    </div>
+  </div>
 
   <!-- Settings, reachable from home as well as the lobby. The card itself is the
        one the lobby borrows, so both places show and edit the same controls. -->
@@ -1437,6 +1478,7 @@ function show(name){
   SCREENS.forEach(s => $('scr-'+s).classList.toggle('active', s === name));
   $('confirm-exit').hidden = true; // never let a dialog outlive its screen
   $('settings-modal').hidden = true;
+  $('chat-modal').hidden = true;
   window.scrollTo(0,0);
 }
 let toastT = 0;
@@ -1752,7 +1794,7 @@ function connect(code, asHost){
      set, G.beganKey made every one of the host's start re-broadcasts look like a
      repeat, so the phone sat in the lobby for the rest of the night. */
   G.gameId = null; G.beganKey = null; G.startAt = 0; G.playing = false;
-  G.chat = []; chatDrawn = 0; renderChat();   // a new party starts with an empty chat
+  G.chat = []; chatDrawn = 0; chatUnread = 0; renderChat();   // a new party starts with an empty chat
   lobbySig = null;  // new room — force the roster to rebuild
   if (asHost) G.cfg = store.get('cfg', {g:4, t:180, m:3, r:3});
 
@@ -1988,19 +2030,45 @@ function electHost(){
    to in solo or the daily.
    ================================================================ */
 const CHAT_MAX = 60;
+let chatUnread = 0;
+/* The BAR travels between screens; the panel itself lives in a sheet. As a full
+   panel parked at the bottom of the podium it sat below the fold — you had to
+   already know it was there to find it. */
 function mountChat(slotId){
-  const panel = $('chat-panel');
-  $(slotId).appendChild(panel);
-  panel.hidden = G.mode !== 'party';
-  renderChat();
+  const bar = $('chat-bar');
+  $(slotId).appendChild(bar);
+  bar.hidden = G.mode !== 'party';
+  renderChatBar();
 }
+function renderChatBar(){
+  const last = G.chat[G.chat.length - 1];
+  $('chat-bar-text').textContent = last
+    ? (last.me ? 'You: ' : last.n + ': ') + last.t
+    : 'Say something to the party!';
+  $('chat-badge').hidden = !chatUnread;
+  $('chat-badge').textContent = chatUnread > 9 ? '9+' : String(chatUnread);
+}
+function chatIsOpen(){ return !$('chat-modal').hidden; }
+function openChat(){
+  $('chat-sheet-slot').appendChild($('chat-panel'));
+  chatUnread = 0; renderChatBar();
+  $('chat-modal').hidden = false;
+  renderChat();
+  setTimeout(() => $('chat-input').focus(), 60);
+}
+function closeChat(){ $('chat-modal').hidden = true; renderChatBar(); }
+$('chat-bar').addEventListener('click', openChat);
+$('btn-chat-done').addEventListener('click', closeChat);
+$('chat-modal').addEventListener('click', e => { if (e.target === $('chat-modal')) closeChat(); });
 function addChat(m){
   if (!m || typeof m.t !== 'string') return;
   const text = m.t.trim().slice(0, 120);
   if (!text) return;
   G.chat.push({id: m.id, n: String(m.n || 'someone').slice(0, 14), e: m.e || '🙂', t: text, me: !!m.me});
   if (G.chat.length > CHAT_MAX) G.chat.splice(0, G.chat.length - CHAT_MAX);
+  if (!m.me && !chatIsOpen()) chatUnread++;
   renderChat();
+  renderChatBar();
   if (!m.me && !G.playing) snd.tick(5);
 }
 /* Append-only: rebuilding the whole log on every incoming message restarted the
@@ -2028,7 +2096,9 @@ function renderChat(){
   // The log is append-only until it hits its cap and shifts; anything other than
   // "n new messages on the end" means start over.
   const drawn = log.querySelectorAll('.chat-msg').length;
-  if (drawn !== chatDrawn || drawn > G.chat.length){
+  // …and clear the "say something" placeholder before the first real message,
+  // or it sits above the conversation forever.
+  if (!drawn || drawn !== chatDrawn || drawn > G.chat.length){
     log.replaceChildren();
     G.chat.forEach(m => log.appendChild(chatBubble(m)));
   } else {
@@ -2048,10 +2118,7 @@ function sendChat(){
 }
 $('chat-send').addEventListener('click', sendChat);
 $('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
-// the on-screen keyboard covers the panel on a phone — keep it in view
-$('chat-input').addEventListener('focus', () => {
-  setTimeout(() => $('chat-panel').scrollIntoView({block:'end', behavior:'smooth'}), 320);
-});
+
 
 /* ---------------- lobby ---------------- */
 let pendingRoom = null, pendingIsRejoin = false;
@@ -2665,6 +2732,7 @@ $('confirm-exit').addEventListener('click', e => { if (e.target === $('confirm-e
 window.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (!$('confirm-exit').hidden) closeExitConfirm();
+  else if (!$('chat-modal').hidden) closeChat();
   else if (!$('settings-modal').hidden) closeSettings();
 });
 

@@ -480,6 +480,7 @@ function show(name){
   SCREENS.forEach(s => $('scr-'+s).classList.toggle('active', s === name));
   $('confirm-exit').hidden = true; // never let a dialog outlive its screen
   $('settings-modal').hidden = true;
+  $('chat-modal').hidden = true;
   window.scrollTo(0,0);
 }
 let toastT = 0;
@@ -795,7 +796,7 @@ function connect(code, asHost){
      set, G.beganKey made every one of the host's start re-broadcasts look like a
      repeat, so the phone sat in the lobby for the rest of the night. */
   G.gameId = null; G.beganKey = null; G.startAt = 0; G.playing = false;
-  G.chat = []; chatDrawn = 0; renderChat();   // a new party starts with an empty chat
+  G.chat = []; chatDrawn = 0; chatUnread = 0; renderChat();   // a new party starts with an empty chat
   lobbySig = null;  // new room — force the roster to rebuild
   if (asHost) G.cfg = store.get('cfg', {g:4, t:180, m:3, r:3});
 
@@ -1031,19 +1032,45 @@ function electHost(){
    to in solo or the daily.
    ================================================================ */
 const CHAT_MAX = 60;
+let chatUnread = 0;
+/* The BAR travels between screens; the panel itself lives in a sheet. As a full
+   panel parked at the bottom of the podium it sat below the fold — you had to
+   already know it was there to find it. */
 function mountChat(slotId){
-  const panel = $('chat-panel');
-  $(slotId).appendChild(panel);
-  panel.hidden = G.mode !== 'party';
-  renderChat();
+  const bar = $('chat-bar');
+  $(slotId).appendChild(bar);
+  bar.hidden = G.mode !== 'party';
+  renderChatBar();
 }
+function renderChatBar(){
+  const last = G.chat[G.chat.length - 1];
+  $('chat-bar-text').textContent = last
+    ? (last.me ? 'You: ' : last.n + ': ') + last.t
+    : 'Say something to the party!';
+  $('chat-badge').hidden = !chatUnread;
+  $('chat-badge').textContent = chatUnread > 9 ? '9+' : String(chatUnread);
+}
+function chatIsOpen(){ return !$('chat-modal').hidden; }
+function openChat(){
+  $('chat-sheet-slot').appendChild($('chat-panel'));
+  chatUnread = 0; renderChatBar();
+  $('chat-modal').hidden = false;
+  renderChat();
+  setTimeout(() => $('chat-input').focus(), 60);
+}
+function closeChat(){ $('chat-modal').hidden = true; renderChatBar(); }
+$('chat-bar').addEventListener('click', openChat);
+$('btn-chat-done').addEventListener('click', closeChat);
+$('chat-modal').addEventListener('click', e => { if (e.target === $('chat-modal')) closeChat(); });
 function addChat(m){
   if (!m || typeof m.t !== 'string') return;
   const text = m.t.trim().slice(0, 120);
   if (!text) return;
   G.chat.push({id: m.id, n: String(m.n || 'someone').slice(0, 14), e: m.e || '🙂', t: text, me: !!m.me});
   if (G.chat.length > CHAT_MAX) G.chat.splice(0, G.chat.length - CHAT_MAX);
+  if (!m.me && !chatIsOpen()) chatUnread++;
   renderChat();
+  renderChatBar();
   if (!m.me && !G.playing) snd.tick(5);
 }
 /* Append-only: rebuilding the whole log on every incoming message restarted the
@@ -1071,7 +1098,9 @@ function renderChat(){
   // The log is append-only until it hits its cap and shifts; anything other than
   // "n new messages on the end" means start over.
   const drawn = log.querySelectorAll('.chat-msg').length;
-  if (drawn !== chatDrawn || drawn > G.chat.length){
+  // …and clear the "say something" placeholder before the first real message,
+  // or it sits above the conversation forever.
+  if (!drawn || drawn !== chatDrawn || drawn > G.chat.length){
     log.replaceChildren();
     G.chat.forEach(m => log.appendChild(chatBubble(m)));
   } else {
@@ -1091,10 +1120,7 @@ function sendChat(){
 }
 $('chat-send').addEventListener('click', sendChat);
 $('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
-// the on-screen keyboard covers the panel on a phone — keep it in view
-$('chat-input').addEventListener('focus', () => {
-  setTimeout(() => $('chat-panel').scrollIntoView({block:'end', behavior:'smooth'}), 320);
-});
+
 
 /* ---------------- lobby ---------------- */
 let pendingRoom = null, pendingIsRejoin = false;
@@ -1708,6 +1734,7 @@ $('confirm-exit').addEventListener('click', e => { if (e.target === $('confirm-e
 window.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (!$('confirm-exit').hidden) closeExitConfirm();
+  else if (!$('chat-modal').hidden) closeChat();
   else if (!$('settings-modal').hidden) closeSettings();
 });
 
