@@ -160,12 +160,16 @@ function solveBoard(board, n, minLen){
   for (let i=0;i<n*n;i++) walk(i, root, '');
   return results;
 }
-// Real Boggle's table: 3–4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11.
-// Super Big Boggle (6×6) additionally pays 2 points per letter at 9+.
+/* NETFLIX BOGGLE PARTY's table, which is NOT tabletop Boggle's: a word is worth
+   its length minus two. 3=1, 4=2, 5=3, 6=4, 7=5, 8=6, and +1 for every letter
+   after that. (Tabletop Boggle pays 1/1/2/3/5/11, which is what this used to
+   use — it made an 8-letter word worth nearly twice what Netflix pays, so no
+   score here matched the real game.) A word only one player found still pays
+   DOUBLE on top, which is the party bonus. Every mode — party, daily and solo —
+   scores through this one function, so they cannot drift apart.
+   Qu counts as the two letters it is: QUIZ is a 4-letter word, 2 points. */
 function scoreFor(w){
-  const L = w.length;
-  if (L >= 9 && G.cfg.g === 6) return L * 2;
-  return L >= 8 ? 11 : L === 7 ? 5 : L === 6 ? 3 : L === 5 ? 2 : 1;
+  return Math.max(0, w.length - 2);
 }
 
 /* ---------------- sound / haptics ---------------- */
@@ -408,7 +412,7 @@ const HOST_GRACE_MS = 6000; // how long a joiner waits to hear a host claim befo
 const DEV = /[?#&]dev\b/.test(location.href);
 
 /* ---------------- screens / toast / overlay ---------------- */
-const SCREENS = ['name','home','join','lobby','game','standings','reveal','podium'];
+const SCREENS = ['name','home','hof','join','lobby','game','standings','reveal','podium'];
 function show(name){
   SCREENS.forEach(s => $('scr-'+s).classList.toggle('active', s === name));
   $('confirm-exit').hidden = true; // never let a dialog outlive its screen
@@ -489,6 +493,10 @@ function refreshHome(){
   const daily = store.get('daily-' + todayKey(), null);
   $('daily-done').hidden = daily === null;
   if (daily !== null) $('daily-done').textContent = daily + ' PTS ✓';
+  const r = record();
+  $('hof-line').textContent = r.games
+    ? r.wins + ' win' + (r.wins === 1 ? '' : 's') + ' · ' + r.games + ' game' + (r.games === 1 ? '' : 's') + ' · best round ' + r.pb
+    : 'your wins, your best ever';
   const best = store.get('best', 0), games = store.get('games', 0);
   $('home-stats').textContent = games
     ? `Best round: ${best} pts · ${games} game${games===1?'':'s'} played`
@@ -510,6 +518,49 @@ $('btn-host').addEventListener('click', () => hostParty());
 $('btn-join').addEventListener('click', () => { $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80); });
 $('btn-join-back').addEventListener('click', () => show('home'));
 $('btn-solo').addEventListener('click', () => startLocal('solo'));
+/* ---------------- hall of fame ---------------- */
+function renderHallOfFame(){
+  const r = record();
+  $('hof-wins').textContent = r.wins;
+  $('hof-games').textContent = r.games;
+  $('hof-pb').textContent = r.pb;
+  $('hof-pbgame').textContent = r.pbGame;
+  $('hof-rate').textContent = r.games ? Math.round(r.wins / r.games * 100) + '%' : '—';
+  $('hof-podiums').textContent = r.podiums;
+  $('hof-words').textContent = r.words;
+  $('hof-bw').textContent = r.bw ? r.bw.toUpperCase() + ' (' + r.bwp + ')' : '—';
+  $('hof-foot').textContent = r.wins
+    ? (r.wins === 1 ? 'One win on the board. Go again!' : r.wins + ' wins and counting!')
+    : 'Win a party game to get on the board!';
+  // In a party, everyone's lifetime record rides along with the roster, so the
+  // family can see how they stack up against each other, not just this game.
+  const crew = G.mode === 'party'
+    ? everyone().map(([id,p]) => ({id, p, rec: p.me ? {w:r.wins, g:r.games, p:r.pb} : (p.rec || null)}))
+        .filter(x => x.rec)
+    : [];
+  $('hof-party').hidden = crew.length < 2;
+  if (crew.length >= 2){
+    crew.sort((a,b) => b.rec.w - a.rec.w || b.rec.p - a.rec.p);
+    const list = $('hof-party-list'); list.replaceChildren();
+    crew.forEach((x, i) => {
+      const row = el('div','stand-row' + (i === 0 && x.rec.w > 0 ? ' first' : '') + (x.p.me ? ' me' : ''));
+      row.appendChild(el('span','rank', String(i+1)));
+      const face = el('span','face', x.p.emoji); face.style.setProperty('--c', colorOf(x.id));
+      row.appendChild(face);
+      const info = el('div','info');
+      info.appendChild(el('b','', x.p.me ? x.p.name + ' (you)' : x.p.name));
+      info.appendChild(el('small','', x.rec.g + ' game' + (x.rec.g === 1 ? '' : 's') + ' · best round ' + x.rec.p));
+      row.appendChild(info);
+      const pts = el('span','pts', String(x.rec.w));
+      pts.appendChild(el('small','', x.rec.w === 1 ? ' win' : ' wins'));
+      row.appendChild(pts);
+      list.appendChild(row);
+    });
+  }
+}
+function openHallOfFame(){ renderHallOfFame(); show('hof'); snd.tick(2); }
+$('btn-hof').addEventListener('click', openHallOfFame);
+$('btn-hof-back').addEventListener('click', () => show(G.mode === 'party' ? 'lobby' : 'home'));
 $('btn-daily').addEventListener('click', () => startLocal('daily'));
 
 /* ---------------- join ---------------- */
@@ -534,8 +585,42 @@ function makeCode(){
   for (let i=0;i<4;i++) c += CODE_CHARS[Math.floor(Math.random()*CODE_CHARS.length)];
   return c;
 }
+/* ================================================================
+   HALL OF FAME — what this phone has done, ever. Kept locally (there is no
+   server) and gossiped with the roster, so a party can also see everyone's
+   lifetime record next to each other.
+   ================================================================ */
+const REC0 = {wins: 0, games: 0, pb: 0, pbGame: 0, bw: '', bwp: 0, words: 0, podiums: 0};
+function record(){ return Object.assign({}, REC0, store.get('record', {})); }
+function saveRecord(r){ store.set('record', r); }
+/* One game is counted once, and only when it truly ends: keyed on the game id so
+   a re-render, a rejoin, or a second phone's late report can't inflate it. */
+function creditGame(rows){
+  if (G.mode !== 'party' || !G.gameId) return;
+  if (store.get('counted', null) === G.gameId) return;
+  store.set('counted', G.gameId);
+  const r = record();
+  const me = rows.findIndex(x => x.p.me);
+  r.games++;
+  if (me === 0 && rows.length > 1) r.wins++;
+  if (me >= 0 && me < 3 && rows.length > 2) r.podiums++;
+  if (me >= 0 && rows[me].total > r.pbGame) r.pbGame = rows[me].total;
+  saveRecord(r);
+  renderHallOfFame();
+}
+/* Round-level bests, from any mode. */
+function creditRound(fin){
+  const r = record();
+  if (fin.s > r.pb) r.pb = fin.s;
+  if (fin.bp > r.bwp || (fin.bp === r.bwp && (fin.b||'').length > (r.bw||'').length)){
+    if (fin.b){ r.bw = fin.b; r.bwp = fin.bp; }
+  }
+  r.words += fin.w || 0;
+  saveRecord(r);
+}
 function myProfile(){
-  return {n: P.name, e: P.emoji, h: G.isHost, j: G.joinedAt};
+  const r = record();
+  return {n: P.name, e: P.emoji, h: G.isHost, j: G.joinedAt, rec: {w: r.wins, g: r.games, p: r.pb}};
 }
 /* Everything we know about the party, re-broadcast on a timer. The mesh is not
    always complete — two phones can both be talking to a third but not to each
@@ -549,10 +634,13 @@ function myProfile(){
 function syncPayload(){
   const players = {};
   G.seq++;
-  players[Trystero.selfId] = {n: P.name, e: P.emoji, j: G.joinedAt, h: G.isHost, q: G.seq, sc: scSelf(), fin: G.finsSelf};
+  const myRec = record();
+  players[Trystero.selfId] = {n: P.name, e: P.emoji, j: G.joinedAt, h: G.isHost, q: G.seq, sc: scSelf(), fin: G.finsSelf,
+                              rec: {w: myRec.wins, g: myRec.games, p: myRec.pb}};
   for (const [id, p] of G.peers){
     if (p.gone) continue;
     const relayed = {n: p.name, e: p.emoji, j: p.joinedAt, h: !!p.host, sc: p.sc || {}, fin: p.fin || {}};
+    if (p.rec) relayed.rec = p.rec;
     if (Number.isFinite(p.seq)) relayed.q = p.seq;
     players[id] = relayed;
   }
@@ -583,6 +671,7 @@ function mergePlayer(id, inc, {live = false, self = false} = {}){
     if (inc.e !== undefined) cur.emoji = inc.e || '🙂';
     if (inc.j !== undefined) cur.joinedAt = inc.j;
     if (inc.h !== undefined) cur.host = !!inc.h;
+    if (inc.rec) cur.rec = inc.rec;   // their lifetime record, for the party leaderboard
   }
   if (self) cur.direct = true;
   return isNew;
@@ -1466,20 +1555,42 @@ window.addEventListener('keydown', e => {
 });
 
 /* live rivals rail */
+/* The rivals rail updates on every score message and every 3s gossip tick — it
+   used to tear down and rebuild every chip each time, so during a round the row
+   jumped and the numbers flickered while you were mid-swipe. Now the chips are
+   built once per roster change and only their numbers and their order change,
+   with flex `order` doing the moving so it slides instead of teleporting. */
+let rivalEls = new Map(), rivalSig = null;
 function renderRivals(){
   const rail = $('rivals');
-  if (G.mode !== 'party'){ rail.replaceChildren(); return; }
+  if (G.mode !== 'party'){ rail.replaceChildren(); rivalEls = new Map(); rivalSig = null; return; }
   const rows = everyone().map(([id,p]) => ({
     id, p, score: (p.me ? G.score : (p.sc && p.sc[G.round]) || 0)
   })).sort((a,b) => b.score - a.score);
-  rail.replaceChildren();
+  const sig = rows.map(r => r.id + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
+  if (sig !== rivalSig){                 // roster changed — rebuild the chips
+    rivalSig = sig;
+    rivalEls = new Map();
+    rail.replaceChildren();
+    rows.forEach(r => {
+      const d = el('div','rival');
+      const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
+      d.appendChild(face);
+      const b = el('b','', String(r.score));
+      d.appendChild(b);
+      d.appendChild(el('small','', r.p.me ? 'you' : r.p.name));
+      rail.appendChild(d);
+      rivalEls.set(r.id, {d, b});
+    });
+  }
   rows.forEach((r, i) => {
-    const d = el('div','rival' + (i === 0 && r.score > 0 ? ' first' : '') + (r.p.gone ? ' gone' : ''));
-    const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
-    d.appendChild(face);
-    d.appendChild(el('b','', String(r.score)));
-    d.appendChild(el('small','', r.p.me ? 'you' : r.p.name));
-    rail.appendChild(d);
+    const e = rivalEls.get(r.id);
+    if (!e) return;
+    e.d.style.order = i;
+    e.d.classList.toggle('first', i === 0 && r.score > 0);
+    e.d.classList.toggle('gone', !!r.p.gone);
+    const txt = String(r.score);
+    if (e.b.textContent !== txt) e.b.textContent = txt;
   });
 }
 
@@ -1509,6 +1620,7 @@ function roundOver(wasSpectating){
   if (!wasSpectating){
     G.finsSelf[G.round] = fin;
     if (G.score > store.get('best',0)) store.set('best', G.score);
+    creditRound(fin);
     if (G.mode === 'daily'){
       const k = 'daily-' + todayKey();
       if (G.score > (store.get(k, -1))) store.set(k, G.score);
@@ -1800,21 +1912,40 @@ function runReveal(done){
      not an inline transform — a throttled rAF never fires the cleanup and the
      card would stay parked on top of someone's avatar. Replaces the card's own
      CSS pop, which would otherwise fight it for the transform. */
-  function launchFromFinder(card, finderId){
-    const b = bubbles.get(finderId);
-    if (reduced || !b || !card.animate) return;
-    const from = b.face.getBoundingClientRect(), to = card.getBoundingClientRect();
+  function launchFromFinders(card, finders){
+    // Light up everyone who found it, for as long as the word is on screen —
+    // with several names lit at once, a shared word is obvious at a glance.
+    stage.dataset.lit = finders.join(' ');
+    finders.forEach(id => { const b = bubbles.get(id); if (b) b.el.classList.add('src'); });
+    if (reduced || !card.animate) return;
+    // The word JUMPS OUT of the people who found it: from the middle of their
+    // avatars when several share it, straight out of the one when it's theirs.
+    const pts = finders.map(id => bubbles.get(id)).filter(Boolean).map(b => b.face.getBoundingClientRect());
+    if (!pts.length) return;
+    const cx = pts.reduce((s,r) => s + r.left + r.width/2, 0) / pts.length;
+    const cy = pts.reduce((s,r) => s + r.top + r.height/2, 0) / pts.length;
+    const to = card.getBoundingClientRect();
     if (!to.width) return;
-    const dx = (from.left + from.width/2) - (to.left + to.width/2);
-    const dy = (from.top + from.height/2) - (to.top + to.height/2);
-    card.style.animation = 'none';
+    const dx = cx - (to.left + to.width/2), dy = cy - (to.top + to.height/2);
+    card.style.animation = 'none';   // the CSS pop would fight this for the transform
     card.animate(
-      [{transform: 'translate(' + dx + 'px,' + dy + 'px) scale(.16)', opacity: .25},
-       {transform: 'none', opacity: 1}],
-      {duration: 540, easing: 'cubic-bezier(.2,1.12,.35,1)'}
+      [{transform: 'translate(' + dx + 'px,' + dy + 'px) scale(.12)', opacity: .2, offset: 0},
+       {transform: 'translate(' + (dx*.25) + 'px,' + (dy*.25 - 14) + 'px) scale(.92)', opacity: 1, offset: .62},
+       {transform: 'none', opacity: 1, offset: 1}],
+      {duration: 620, easing: 'cubic-bezier(.22,1.1,.32,1)'}
     );
+    pts.forEach((_, k) => {
+      const b = bubbles.get(finders[k]);
+      if (b) b.face.animate([{transform:'scale(calc(var(--grow,1) * .84))'},{transform:'scale(var(--grow,1))'}],
+                            {duration: 420, easing:'cubic-bezier(.2,1.6,.4,1)'});
+    });
+  }
+  function unlight(){
+    bubbles.forEach(b => b.el.classList.remove('src'));
+    stage.dataset.lit = '';
   }
   function showWord(e2){
+    unlight();
     stage.replaceChildren();
     const card = el('div','rv-word' + (e2.unique ? ' unique' : ''));
     const word = e2.w.toUpperCase();
@@ -1846,11 +1977,11 @@ function runReveal(done){
     card.appendChild(row);
     const ribbon = el('div','rv-x2' + (e2.unique ? '' : ' shared'),
       e2.unique ? 'NOBODY ELSE FOUND IT — DOUBLE!' :
-      e2.finders.length > 1 ? e2.finders.length + ' of you found it' : 'found it');
+      e2.finders.length > 1 ? '🤝 SHARED BY ' + e2.finders.length + ' OF YOU' : 'FOUND IT');
     ribbon.style.animationDelay = (lands + 120) + 'ms';
     card.appendChild(ribbon);
     stage.appendChild(card);
-    launchFromFinder(card, e2.finders[0]);
+    launchFromFinders(card, e2.finders);
     const lc = el('span','rv-logchip' + (e2.unique ? ' u' : ''), word);
     log.appendChild(lc);
     log.scrollLeft = log.scrollWidth;
@@ -1911,6 +2042,7 @@ function runReveal(done){
   $('btn-reveal-skip').onclick = () => {
     revealTimers.forEach(clearTimeout); revealTimers.length = 0;
     document.querySelectorAll('.rv-fly').forEach(f => f.remove());
+    unlight();
     stage.replaceChildren(); snapTotals();
     setPhase(last ? '🏆 AND THE WINNER IS…' : '📈 WHO’S AHEAD?', '');
     snd.up();
@@ -1971,6 +2103,7 @@ function runReveal(done){
   }
   t += 450;
   at(t, () => {
+    unlight();
     stage.replaceChildren(); snapTotals();
     setPhase(last ? '🏆 AND THE WINNER IS…' : '📈 WHO’S AHEAD?',
              last ? '' : 'after round ' + (G.round+1) + ' of ' + G.cfg.r);
@@ -1991,6 +2124,7 @@ function renderPodium(){
   const multi = G.cfg.r > 1;
   const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p), rd: roundScoreOf(p, G.round)}))
     .sort((a,b) => b.total - a.total);
+  if (last) creditGame(rows);   // one game, counted once — see creditGame()
   const sig = G.round + '|' + last + '|' + G.isHost + '|' +
     rows.map(r => r.id + ':' + r.total + ':' + r.rd + ':' + (r.p.gone?1:0) + ':' + r.p.name + r.p.emoji).join(',');
   if (sig === podiumSig) return;
