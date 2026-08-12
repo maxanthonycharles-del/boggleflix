@@ -1820,59 +1820,82 @@ function runReveal(done){
     const word = e2.w.toUpperCase();
     const tiles = el('div','rv-tiles');
     // letter tiles sized so even ANACONDAS fits a phone screen
-    tiles.style.setProperty('--ts', Math.max(14, Math.min(32, Math.floor((Math.min(innerWidth, 520) - 80) / word.length * .58))) + 'px');
-    // one die at a time, slow enough to actually watch the word being spelled
+    tiles.style.setProperty('--ts', Math.max(15, Math.min(36, Math.floor((Math.min(innerWidth, 520) - 70) / word.length * .60))) + 'px');
+    const spell = 70;   // ms per die
     [...word].forEach((ch, i) => {
       const s = el('span','', ch);
-      s.style.animationDelay = (i * 85) + 'ms';
+      s.style.animationDelay = (i * spell) + 'ms';
       tiles.appendChild(s);
     });
     card.appendChild(tiles);
+    /* Whose word is it? Every word now names its finders — avatar AND name —
+       because the batched words used to show no owner at all, which is what
+       made the whole reveal unreadable. */
+    const lands = word.length * spell + 140;
     const row = el('div','rv-finders');
     e2.finders.forEach((id, i) => {
       const r = rows.find(x => x.id === id);
       const chip = el('span','rv-finder');
-      chip.style.animationDelay = (word.length * 85 + 120 + i * 60) + 'ms';  // after the last die lands
+      chip.style.animationDelay = (lands + i * 90) + 'ms';
       const face = el('span','face', r ? r.p.emoji : '🙂'); face.style.setProperty('--c', colorOf(id));
       chip.appendChild(face);
+      chip.appendChild(el('i','', r ? (r.p.me ? 'you' : r.p.name) : ''));
       chip.appendChild(el('b','','+' + e2.pts));
       row.appendChild(chip);
     });
     card.appendChild(row);
-    if (e2.unique) card.appendChild(el('div','rv-x2','UNIQUE — DOUBLE POINTS!'));
-    else if (e2.finders.length > 1) card.appendChild(el('div','rv-shared', e2.finders.length + ' of you found it'));
+    const ribbon = el('div','rv-x2' + (e2.unique ? '' : ' shared'),
+      e2.unique ? 'NOBODY ELSE FOUND IT — DOUBLE!' :
+      e2.finders.length > 1 ? e2.finders.length + ' of you found it' : 'found it');
+    ribbon.style.animationDelay = (lands + 120) + 'ms';
+    card.appendChild(ribbon);
     stage.appendChild(card);
     launchFromFinder(card, e2.finders[0]);
     const lc = el('span','rv-logchip' + (e2.unique ? ' u' : ''), word);
     log.appendChild(lc);
     log.scrollLeft = log.scrollWidth;
+    return lands;
   }
-  // The small change: several words at once. They still spell themselves out a
-  // letter at a time — the words just overlap instead of queueing, which keeps a
-  // 40-word round from taking half a minute to read out one word at a time.
-  function showBatch(list, unique){
-    stage.replaceChildren();
-    const card = el('div','rv-batch' + (unique ? ' unique' : ''));
-    const grid = el('div','rv-batch-words');
-    list.forEach((e2, i) => {
-      const chip = el('span','rv-bchip' + (unique ? ' u' : ''));
-      const word = e2.w.toUpperCase();
-      // ripple across the card: the words overlap, the letters inside don't —
-      // the whole card must finish spelling itself inside one SWEEP.
-      [...word].forEach((ch, j) => {
-        const tile = el('i','', ch);
-        tile.style.animationDelay = (i * 38 + j * 20) + 'ms';
-        chip.appendChild(tile);
-      });
-      const pts = el('b','','+' + e2.pts);
-      pts.style.animationDelay = (i * 38 + word.length * 20) + 'ms';
-      chip.appendChild(pts);
-      grid.appendChild(chip);
+  /* …and then the word physically travels into each person who found it: a copy
+     of it flies from the card into their avatar, and only when it lands do their
+     points go up. That journey is the answer to "which words go to who". */
+  function flyToFinders(e2, after){
+    const word = e2.w.toUpperCase();
+    let first = true;
+    e2.finders.forEach((id, k) => {
+      const b = bubbles.get(id);
+      if (!b){ award(id, e2.pts); return; }
+      const to = b.face.getBoundingClientRect();
+      const card = stage.querySelector('.rv-word');
+      const from = (card || stage).getBoundingClientRect();
+      let landed = false;
+      const land = () => {
+        if (landed) return;        // onfinish and the stall backstop both call this
+        landed = true;
+        award(id, e2.pts);
+        b.face.animate([{transform:'scale(var(--grow,1))'},{transform:'scale(calc(var(--grow,1) * 1.25))'},
+                        {transform:'scale(var(--grow,1))'}], {duration:340, easing:'ease-out'});
+        if (first){ first = false; reorder(); }
+      };
+      if (reduced || !document.body.animate){ land(); return; }
+      const fly = el('div','rv-fly' + (e2.unique ? ' u' : ''));
+      fly.appendChild(el('span','', word));
+      fly.appendChild(el('b','','+' + e2.pts));
+      document.body.appendChild(fly);
+      const w = fly.getBoundingClientRect();
+      const x0 = from.left + from.width/2 - w.width/2, y0 = from.top + from.height/2 - w.height/2;
+      const x1 = to.left + to.width/2 - w.width/2,   y1 = to.top + to.height/2 - w.height/2;
+      fly.style.transform = 'translate(' + x0 + 'px,' + y0 + 'px)';
+      const a = fly.animate([
+        {transform: 'translate(' + x0 + 'px,' + y0 + 'px) scale(1)', opacity: 1},
+        {transform: 'translate(' + ((x0+x1)/2) + 'px,' + ((y0+y1)/2 - 26) + 'px) scale(.8)', opacity: 1, offset: .55},
+        {transform: 'translate(' + x1 + 'px,' + y1 + 'px) scale(.25)', opacity: .15}
+      ], {duration: FLY, delay: k * 130, easing: 'cubic-bezier(.4,.05,.35,1)', fill: 'forwards'});
+      a.onfinish = () => { fly.remove(); land(); };
+      // a backgrounded tab can stall the animation and never fire onfinish
+      revealTimers.push(setTimeout(() => { fly.remove(); land(); }, FLY + k*130 + 400));
     });
-    card.appendChild(grid);
-    stage.appendChild(card);
-    list.forEach(e2 => log.appendChild(el('span','rv-logchip' + (unique ? ' u' : ''), e2.w.toUpperCase())));
-    log.scrollLeft = log.scrollWidth;
+    if (after) after();
   }
   // Everyone's final number is already known — the show just performs it.
   function snapTotals(){
@@ -1882,6 +1905,17 @@ function runReveal(done){
     });
     reorder();
   }
+
+  /* Skip: stop every pending step, put the real totals up, and hand straight
+     over to the podium. Local only — it doesn't touch anyone else's phone. */
+  $('btn-reveal-skip').onclick = () => {
+    revealTimers.forEach(clearTimeout); revealTimers.length = 0;
+    document.querySelectorAll('.rv-fly').forEach(f => f.remove());
+    stage.replaceChildren(); snapTotals();
+    setPhase(last ? '🏆 AND THE WINNER IS…' : '📈 WHO’S AHEAD?', '');
+    snd.up();
+    revealTimers.push(setTimeout(done, 900));
+  };
 
   const entries = buildRevealEntries(G.round);
   // small scores first so every phase builds to its biggest word
@@ -1902,41 +1936,27 @@ function runReveal(done){
      enough to actually read, and the small change sweeps past in batches.
      Slowed by half again on 2026-08-12 (Max: "way too fast") — a word now has
      time to spell itself out die by die before the next one takes the stage. */
-  const SPOTLIGHT = 4;   // words per phase that get the full treatment
-  const DWELL = 1350, DWELL_UNIQUE = 1600, SWEEP = 650;
+  /* Every word is now staged the same way — spelled out, owners named, then
+     flown into them — so the pace is simply how long that takes to read. Do
+     NOT go back to scaling this by word count; that is the mistake that made
+     big rounds unreadable in the first place. A long round is long: the
+     tap-to-skip on the reveal screen is the escape hatch, not a faster clock. */
+  const DWELL = 1750, DWELL_UNIQUE = 2000, FLY = 620;
   let t = 1050, tickN = 0;
+  const at2 = (ms, fn) => revealTimers.push(setTimeout(fn, ms));
 
   function stagePhase(list, unique, t0){
     let t = t0;
-    const byPts = list.slice().sort((a,b) => b.pts - a.pts || a.w.localeCompare(b.w));
-    // a lone leftover word looks odd in a batch card — spotlight it instead
-    const spotN = byPts.length - SPOTLIGHT < 3 ? byPts.length : SPOTLIGHT;
-    const rest = byPts.slice(spotN);
-    const spotlight = byPts.slice(0, spotN).reverse();  // ascending: builds to the biggest
-    if (rest.length){
-      const batches = Math.min(6, Math.ceil(rest.length / 6));
-      const per = Math.ceil(rest.length / batches);
-      for (let b = 0; b < batches; b++){
-        const chunk = rest.slice(b * per, (b + 1) * per);
-        if (!chunk.length) continue;
-        at(t, () => {
-          showBatch(chunk, unique);
-          chunk.forEach(e2 => e2.finders.forEach(id => award(id, e2.pts)));
-          reorder();
-          unique ? snd.spark() : snd.tick(tickN++ % 8);
-        });
-        t += SWEEP;
-      }
-      t += 390;
-    }
-    spotlight.forEach(e2 => {
+    // smallest first, so each phase builds towards its biggest word
+    const asc = list.slice().sort((a,b) => a.pts - b.pts || a.w.localeCompare(b.w));
+    asc.forEach(e2 => {
       at(t, () => {
-        showWord(e2);
-        e2.finders.forEach(id => award(id, e2.pts));
-        reorder();
+        const lands = showWord(e2);
         unique ? snd.spark() : snd.tick(tickN++ % 8);
+        // the word sits and is read, THEN flies into whoever found it
+        at2(lands + 260, () => flyToFinders(e2));
       });
-      t += unique ? DWELL_UNIQUE : DWELL;
+      t += (unique ? DWELL_UNIQUE : DWELL) + Math.min(4, e2.w.length - 3) * 70;
     });
     return t;
   }

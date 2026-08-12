@@ -339,6 +339,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 
 /* ---------- SCORE REVEAL (end-of-game, word-by-word like Boggle Party) ---------- */
 #scr-reveal{overflow:hidden;gap:8px}
+/* A big round takes a while now that every word is read out and delivered.
+   This is the escape hatch — never speed the words up to make it fit. */
+.rv-skip{align-self:center;margin-top:4px;font-weight:700;font-size:12.5px;color:#fff;opacity:.8;
+  text-decoration:underline;text-underline-offset:3px;padding:6px 10px;text-shadow:0 1px 0 rgba(150,15,72,.3)}
 .rv-phase{font-family:var(--display);font-weight:800;font-size:26px;line-height:1.1;color:#fff;
   text-shadow:0 3px 0 rgba(30,42,94,.85),0 8px 18px rgba(130,10,62,.35);animation:phasein .5s cubic-bezier(.2,1.6,.4,1)}
 @keyframes phasein{from{transform:scale(.55) rotate(-2deg);opacity:0}}
@@ -376,28 +380,29 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   -webkit-mask-image:radial-gradient(circle,#000 22%,transparent 68%);mask-image:radial-gradient(circle,#000 22%,transparent 68%);
   animation:rayspin 9s linear infinite}
 @keyframes rayspin{to{transform:rotate(360deg)}}
-/* the quick sweep of smaller words — several at once instead of one by one */
-.rv-batch{display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 4px;animation:wordin .28s cubic-bezier(.2,1.6,.4,1)}
-.rv-batch-words{display:flex;flex-wrap:wrap;gap:10px 13px;justify-content:center;max-width:340px}
-/* Every word is spelled out a die at a time — the sweep words too, not just the
-   headline ones — so the whole reveal reads the way Boggle Party's does. */
-.rv-bchip{display:inline-flex;align-items:center;gap:3px;font-family:var(--display);font-weight:800}
-.rv-bchip i{width:25px;height:25px;border-radius:24%;display:grid;place-items:center;font-style:normal;
-  font-size:15px;line-height:1;color:var(--navy);background:var(--cream);
-  box-shadow:0 3px 0 var(--cream-edge),0 6px 12px rgba(130,10,62,.22);animation:rvtile .3s cubic-bezier(.2,1.6,.4,1) backwards}
-.rv-bchip b{margin-left:4px;font-size:13px;color:#fff;background:#FF7A1A;border-radius:999px;padding:3px 8px;
-  box-shadow:0 2px 0 rgba(150,15,72,.35);animation:chipin .3s cubic-bezier(.2,1.6,.4,1) backwards}
-.rv-bchip.u i{background:linear-gradient(180deg,#FFEE8F,#FFD93C);box-shadow:0 3px 0 var(--gold-edge),0 0 14px rgba(255,217,60,.7)}
+/* Every word travels into the people who found it — a copy of it flies out of
+   the card and shrinks into their avatar, and their score only moves when it
+   lands. That flight is what makes "whose word was that?" answerable. */
+.rv-fly{position:fixed;left:0;top:0;z-index:70;pointer-events:none;display:flex;align-items:center;gap:7px;
+  background:var(--cream);border-radius:14px;padding:8px 13px;box-shadow:0 5px 0 var(--cream-edge),0 10px 22px rgba(130,10,62,.3);
+  font-family:var(--display);font-weight:800;font-size:19px;color:var(--navy);white-space:nowrap}
+.rv-fly b{font-size:16px;color:#fff;background:#FF7A1A;border-radius:999px;padding:2px 9px}
+.rv-fly.u{background:linear-gradient(180deg,#FFEE8F,#FFD93C);box-shadow:0 5px 0 var(--gold-edge),0 0 22px rgba(255,217,60,.8)}
+.rv-fly.u b{background:var(--navy)}
 .rv-finders{display:flex;flex-wrap:wrap;gap:7px;justify-content:center}
 .rv-finder{display:flex;align-items:center;gap:6px;background:var(--white);border-radius:999px;padding:4px 11px 4px 4px;
   box-shadow:0 3px 0 rgba(30,42,94,.18);animation:chipin .3s cubic-bezier(.2,1.6,.4,1) backwards}
-.rv-finder .face{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;font-size:16px;border:3px solid var(--c,#3B82F6)}
+.rv-finder .face{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;font-size:17px;border:3px solid var(--c,#3B82F6)}
+.rv-finder i{font-style:normal;font-family:var(--display);font-weight:800;font-size:15px;color:var(--navy);max-width:84px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rv-finder b{font-family:var(--display);font-weight:800;font-size:16px;color:#FF7A1A}
 .rv-x2{font-family:var(--display);font-weight:800;font-size:13.5px;letter-spacing:.06em;color:var(--navy);
   background:linear-gradient(180deg,#FFEE8F,#FFD93C);border-radius:999px;padding:6px 15px;box-shadow:0 3px 0 var(--gold-edge);
   animation:x2in .45s cubic-bezier(.2,1.8,.4,1) .15s backwards}
 @keyframes x2in{from{transform:scale(0) rotate(8deg)}}
-.rv-shared{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.95);text-shadow:0 1px 0 rgba(150,15,72,.3)}
+/* shared words get the identical ribbon, in white — same shape, same weight, so
+   every word on the reveal reads as equally important */
+.rv-x2.shared{background:var(--white);color:var(--navy);box-shadow:0 3px 0 rgba(30,42,94,.2)}
 .rv-round{position:absolute;top:2px;right:-4px;font-family:var(--display);font-weight:800;font-size:11px;color:#fff;
   background:rgba(30,42,94,.4);border-radius:999px;padding:3px 8px}
 /* the trail of words already revealed */
@@ -633,6 +638,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     <div class="rv-stage" id="reveal-stage"></div>
     <div class="rv-log" id="reveal-log"></div>
     <div class="rv-note" id="reveal-note">words nobody else found are worth DOUBLE points!</div>
+    <button class="rv-skip" id="btn-reveal-skip">skip to the scores ›</button>
   </section>
 
   <!-- ============ PODIUM (after every round) ============ -->
