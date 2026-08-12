@@ -117,12 +117,24 @@ function trayFlaws(board, n){
    time, and it lifts the bottom without touching the top: the worst 4×4 goes
    55 → 65 findable words and the median 84 → 92, the worst 5×5 75 → 90 and the
    median 119 → 127, the worst 6×6 120 → 140 and the median 182 → 190. */
-const TRAY_FLOOR = {4: 65, 5: 90, 6: 140};
-const MAX_SOLVES = 8;   // a solve is the expensive part — bound it
+/* The floor has to know the MINIMUM WORD LENGTH, not just the grid. A 5×5 is
+   generous at three letters and brutal at five: the same tray goes from ~165
+   findable words to ~38. A flat per-grid floor was therefore unreachable on the
+   longer minimums — the generator burned every retry and handed over whatever
+   it had, which is exactly the setting Max found too hard. Each cell below is
+   roughly the 70th percentile of what that combination naturally offers, so a
+   tray is always better than average for the rules you chose. */
+const TRAY_FLOOR = {
+  4: {3: 75,  4: 36,  5: 16, 6: 5},
+  5: {3: 190, 4: 105, 5: 50, 6: 18},
+  6: {3: 255, 4: 165, 5: 80, 6: 30}
+};
+const MAX_SOLVES = 14;   // reaching the 70th percentile takes a few goes
 function genBoard(seed, n, minLen){
   const rnd = rngFromSeed(seed);
-  const floor = TRAY_FLOOR[n] || 55;
-  const need = minLen || (n === 4 ? 3 : 4);
+  const need = Math.min(6, Math.max(3, minLen || (n === 4 ? 3 : 4)));
+  const byGrid = TRAY_FLOOR[n] || TRAY_FLOOR[5];
+  const floor = byGrid[need] || byGrid[4];
   let best = null, bestWords = null, solves = 0;
   for (let attempt = 0; attempt < 60; attempt++){
     const board = shakeTray(rnd, n);
