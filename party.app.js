@@ -57,14 +57,11 @@ const DICE6 = ["AAAFRS","AAEEEE","AAEEOO","AAFIRS","ABDEIO","ADENNN","AEEEEM","A
   "JKQWXZ","NOOTUW","OOOTTU"];
 const DICE_FOR = {4: DICE4, 5: DICE5, 6: DICE6};
 
-/* The board is generated exactly the way the real game shakes its tray (and
-   the way a faithful adaptation like Netflix's simulates it): the official
-   dice are shuffled into the grid — each die lands in one cell — and each
-   shows a uniformly random face. Nothing is curated or re-rolled; vowel
-   droughts and letter clumps are part of real Boggle. Deterministic in the
-   seed, so every phone in a party shows the identical grid. */
-function genBoard(seed, n){
-  const rnd = rngFromSeed(seed);
+/* One shake of the tray, exactly as the real game does it: the official dice
+   are shuffled into the grid — each die lands in one cell — and each shows a
+   uniformly random face. Nothing is invented; every letter here is a face that
+   exists on a real Boggle die. */
+function shakeTray(rnd, n){
   const dice = DICE_FOR[n].slice();
   for (let i=dice.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); [dice[i],dice[j]]=[dice[j],dice[i]]; }
   // Every face is one letter; Q is the sole exception and always comes up "QU".
@@ -72,6 +69,47 @@ function genBoard(seed, n){
     const f = d[Math.floor(rnd()*6)];
     return f === 'Q' ? 'QU' : f.toUpperCase();
   });
+}
+const hasVowel = c => /[AEIOU]/.test(c);   // "QU" carries its own U
+/* How bad a tray is to actually play, 0 = fine. A real shake genuinely does
+   deal out corners with no vowel within reach and trays swamped by one letter,
+   and those rounds are miserable rather than challenging — you stare at letters
+   that cannot combine into anything. */
+function trayFlaws(board, n){
+  const N = n * n;
+  let flaws = 0;
+  const vowels = board.filter(hasVowel).length;
+  const lo = Math.ceil(N * .28), hi = Math.floor(N * .46);   // real trays sit ~36%
+  if (vowels < lo) flaws += (lo - vowels) * 2;
+  if (vowels > hi) flaws += vowels - hi;
+  // every die needs a vowel on it or beside it, or that corner of the tray is dead
+  const adj = adjacency(n);
+  for (let i=0;i<N;i++){
+    if (hasVowel(board[i])) continue;
+    if (!adj[i].some(j => hasVowel(board[j]))) flaws += 3;
+  }
+  // and no single letter should swamp the tray
+  const cap = n === 4 ? 3 : n === 5 ? 4 : 5;
+  const counts = {};
+  for (const c of board) counts[c] = (counts[c] || 0) + 1;
+  for (const c in counts) if (counts[c] > cap) flaws += counts[c] - cap;
+  return flaws;
+}
+/* Shake until the tray is one worth playing. The letters are never touched —
+   no cell is edited, nothing is substituted — a dud tray is simply shaken again,
+   which is what a person does with a real Boggle set. Draws keep coming from the
+   one seeded stream, so every phone in the party re-shakes in lockstep and lands
+   on the identical grid. If the dice are stubborn, the least-bad tray goes out. */
+function genBoard(seed, n){
+  const rnd = rngFromSeed(seed);
+  let best = null;
+  for (let attempt = 0; attempt < 60; attempt++){
+    const board = shakeTray(rnd, n);
+    const flaws = trayFlaws(board, n);
+    if (!flaws) return board;
+    if (!best || flaws < best.flaws) best = {board, flaws};
+  }
+  return best.board;
 }
 function adjacency(n){
   const adj = [];
@@ -361,6 +399,7 @@ const G = {   // current game context
 };
 const GOSSIP_MS = 3000;   // re-announce cadence
 const GOSSIP_TTL = 14000; // forget an indirect peer nobody has mentioned this long
+const HOST_GRACE_MS = 6000; // how long a joiner waits to hear a host claim before taking it
 const DEV = /[?#&]dev\b/.test(location.href);
 
 /* ---------------- screens / toast / overlay ---------------- */
@@ -407,9 +446,8 @@ $('btn-name-go').addEventListener('click', () => {
   P.name = v.slice(0,14);
   store.set('name', P.name); store.set('emoji', P.emoji);
   snd.up();
-  refreshHome();
-  if (pendingRoom){ const c = pendingRoom; pendingRoom = null; joinParty(c); }
-  else show('home');
+  refreshHome();  // surfaces the invite banner if a link brought them here
+  show('home');
 });
 $('name-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-name-go').click(); });
 $('btn-me').addEventListener('click', openName);
@@ -433,6 +471,10 @@ function refreshHome(){
   $('me-name').textContent = P.name || 'Player';
   $('me-face').textContent = P.emoji || '🦊';
   applySoundUI();
+  // An invite link's code waits here as one obvious tap instead of joining by
+  // itself — see boot(). Once used (or dismissed) the banner is gone.
+  $('invite-banner').hidden = !pendingRoom;
+  if (pendingRoom) $('btn-invite-join').textContent = '🎟️\xa0 Join party ' + pendingRoom;
   const daily = store.get('daily-' + todayKey(), null);
   $('daily-done').hidden = daily === null;
   if (daily !== null) $('daily-done').textContent = daily + ' PTS ✓';
@@ -443,6 +485,12 @@ function refreshHome(){
 }
 $('btn-sound').addEventListener('click', toggleSound);
 $('btn-game-sound').addEventListener('click', toggleSound);
+$('btn-invite-join').addEventListener('click', () => {
+  const c = pendingRoom; pendingRoom = null;
+  refreshHome();
+  if (c) joinParty(c);
+});
+$('btn-invite-no').addEventListener('click', () => { pendingRoom = null; refreshHome(); snd.tick(1); });
 $('btn-host').addEventListener('click', () => hostParty());
 $('btn-join').addEventListener('click', () => { $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80); });
 $('btn-join-back').addEventListener('click', () => show('home'));
@@ -529,6 +577,7 @@ function connect(code, asHost){
   G.mode = 'party'; G.code = code; G.isHost = asHost; G.joinedAt = Date.now();
   G.peers = new Map(); G.finsSelf = {}; G.round = 0; G.seeds = [];
   G.spectating = false; G.seq = 0;
+  lobbySig = null;  // new room — force the roster to rebuild
   if (asHost) G.cfg = store.get('cfg', {g:4, t:180, m:3, r:3});
 
   // Pin the signalling to major, high-uptime nostr relays. The bundle's own
@@ -695,6 +744,12 @@ function electHost(){
   // host leaves (or a split brain leaves two claiming it), fall back to the
   // lowest peer id, which every phone computes the same way.
   const claimers = act.filter(([, p]) => p.host);
+  /* Nobody claiming it yet is normal for the first seconds after joining — the
+     host's hello simply hasn't landed. Taking the crown on that silence made the
+     lobby flap: the settings unlocked, then re-locked the instant the real host
+     was heard, throwing away a pick made in between. Wait out a short grace
+     period first; a genuinely host-less room still migrates, just a beat later. */
+  if (!claimers.length && !G.isHost && act.length > 1 && Date.now() - G.joinedAt < HOST_GRACE_MS) return;
   const [hostId] = (claimers.length ? claimers : act).map(([id]) => id).sort();
   const wasHost = G.isHost;
   G.isHost = hostId === Trystero.selfId;
@@ -770,19 +825,28 @@ function quitToHome(){
 }
 $('btn-lobby-leave').addEventListener('click', quitToHome);
 
+/* Rebuilding the avatars restarts their pop-in animation AND their idle bob,
+   and this runs on every network message plus every gossip tick — so the lobby
+   flashed every three seconds, right under the fingers of whoever was trying to
+   pick the settings. Only touch the DOM when the roster actually changed. */
+let lobbySig = null;
 function renderLobbyPlayers(){
   if (G.mode !== 'party') return;
-  const wrap = $('lobby-players'); wrap.replaceChildren();
-  const act = everyone();
-  for (const [id, p] of act){
-    if (p.gone) continue;
-    const blob = el('div','pl-blob');
-    const face = el('span','face', p.emoji); face.style.setProperty('--c', colorOf(id));
-    blob.appendChild(face);
-    blob.appendChild(el('b','', p.me ? p.name + ' (you)' : p.name));
-    const isHost = p.me ? G.isHost : p.host;
-    if (isHost) blob.appendChild(el('span','tag','HOST'));
-    wrap.appendChild(blob);
+  const act = everyone().filter(([,p]) => !p.gone);
+  const sig = act.map(([id,p]) =>
+    id + '~' + p.name + '~' + p.emoji + '~' + ((p.me ? G.isHost : p.host) ? 'h' : '')).join('|');
+  if (sig !== lobbySig){
+    lobbySig = sig;
+    const wrap = $('lobby-players'); wrap.replaceChildren();
+    for (const [id, p] of act){
+      const blob = el('div','pl-blob');
+      const face = el('span','face', p.emoji); face.style.setProperty('--c', colorOf(id));
+      blob.appendChild(face);
+      blob.appendChild(el('b','', p.me ? p.name + ' (you)' : p.name));
+      const isHost = p.me ? G.isHost : p.host;
+      if (isHost) blob.appendChild(el('span','tag','HOST'));
+      wrap.appendChild(blob);
+    }
   }
   const count = activePlayers().length;
   let status;
@@ -1574,6 +1638,23 @@ function runReveal(done){
     log.appendChild(lc);
     log.scrollLeft = log.scrollWidth;
   }
+  // The small change: several words at once, chips popping in together. Keeps a
+  // 40-word round from taking half a minute to read out one word at a time.
+  function showBatch(list, unique){
+    stage.replaceChildren();
+    const card = el('div','rv-batch' + (unique ? ' unique' : ''));
+    const grid = el('div','rv-batch-words');
+    list.forEach((e2, i) => {
+      const chip = el('span','rv-bchip' + (unique ? ' u' : ''), e2.w.toUpperCase());
+      chip.appendChild(el('b','','+' + e2.pts));
+      chip.style.animationDelay = (i * 45) + 'ms';
+      grid.appendChild(chip);
+    });
+    card.appendChild(grid);
+    stage.appendChild(card);
+    list.forEach(e2 => log.appendChild(el('span','rv-logchip' + (unique ? ' u' : ''), e2.w.toUpperCase())));
+    log.scrollLeft = log.scrollWidth;
+  }
   // Everyone's final number is already known — the show just performs it.
   function snapTotals(){
     rows.forEach(r => {
@@ -1595,35 +1676,66 @@ function runReveal(done){
     return;
   }
 
+  /* Pacing. Scaling the interval to the word count was wrong in both
+     directions at once: a big haul squeezed each word down to ~half a second
+     (gone before you can read it) while the sequence still dragged past twenty
+     seconds. So only the headline words take the centre stage, each held long
+     enough to actually read, and the small change sweeps past in batches. */
+  const SPOTLIGHT = 4;   // words per phase that get the full treatment
+  const DWELL = 900, DWELL_UNIQUE = 1050, SWEEP = 430;
   let t = 700, tickN = 0;
+
+  function stagePhase(list, unique, t0){
+    let t = t0;
+    const byPts = list.slice().sort((a,b) => b.pts - a.pts || a.w.localeCompare(b.w));
+    // a lone leftover word looks odd in a batch card — spotlight it instead
+    const spotN = byPts.length - SPOTLIGHT < 3 ? byPts.length : SPOTLIGHT;
+    const rest = byPts.slice(spotN);
+    const spotlight = byPts.slice(0, spotN).reverse();  // ascending: builds to the biggest
+    if (rest.length){
+      const batches = Math.min(4, Math.ceil(rest.length / 6));
+      const per = Math.ceil(rest.length / batches);
+      for (let b = 0; b < batches; b++){
+        const chunk = rest.slice(b * per, (b + 1) * per);
+        if (!chunk.length) continue;
+        at(t, () => {
+          showBatch(chunk, unique);
+          chunk.forEach(e2 => e2.finders.forEach(id => award(id, e2.pts)));
+          reorder();
+          unique ? snd.spark() : snd.tick(tickN++ % 8);
+        });
+        t += SWEEP;
+      }
+      t += 260;
+    }
+    spotlight.forEach(e2 => {
+      at(t, () => {
+        showWord(e2);
+        e2.finders.forEach(id => award(id, e2.pts));
+        reorder();
+        unique ? snd.spark() : snd.tick(tickN++ % 8);
+      });
+      t += unique ? DWELL_UNIQUE : DWELL;
+    });
+    return t;
+  }
+
   if (shared.length){
     at(t, () => setPhase('🤝 WORDS YOU SHARED', 'everyone who found it scores!'));
-    t += 1100;
-    // pace each phase to its word count — snappy for a big haul, savoured for a few
-    const iv = Math.max(560, Math.min(1000, Math.round(26000 / shared.length)));
-    shared.forEach(e2 => {
-      at(t, () => { showWord(e2); e2.finders.forEach(id => award(id, e2.pts)); reorder(); snd.tick(tickN++ % 8); });
-      t += iv;
-    });
-    t += 400;
+    t = stagePhase(shared, false, t + 800) + 300;
   }
   if (uniq.length){
     at(t, () => { stage.replaceChildren(); setPhase('✨ UNIQUE WORDS', 'nobody else found these — DOUBLE points!'); snd.spark(); });
-    t += 1600;
-    const iv = Math.max(760, Math.min(1300, Math.round(22000 / uniq.length)));
-    uniq.forEach(e2 => {
-      at(t, () => { showWord(e2); award(e2.finders[0], e2.pts); reorder(); snd.spark(); });
-      t += iv;
-    });
+    t = stagePhase(uniq, true, t + 1100);
   }
-  t += 400;
+  t += 300;
   at(t, () => {
     stage.replaceChildren(); snapTotals();
     setPhase(last ? '🏆 AND THE WINNER IS…' : '📈 WHO’S AHEAD?',
              last ? '' : 'after round ' + (G.round+1) + ' of ' + G.cfg.r);
     snd.up();
   });
-  at(t + 1700, done);
+  at(t + 1400, done);
 }
 
 function renderPodium(){
@@ -1743,11 +1855,20 @@ function confettiBurst(){
 }
 
 /* ---------------- boot ---------------- */
-refreshHome();
+/* Opening the app always lands on the homepage. An invite link's code is kept
+   as a one-tap "join" button there rather than joining on its own: these links
+   get bookmarked, saved to a home screen and re-tapped out of the family chat
+   days later, and auto-joining meant every one of those taps dropped you into a
+   dead room as its host, staring at a code you never asked for. */
 (function boot(){
   const m = (location.search + location.hash).match(/room=([A-Za-z]{4})/);
-  if (m) pendingRoom = m[1].toUpperCase();
+  if (m){
+    pendingRoom = m[1].toUpperCase();
+    // Don't let the code linger in the address bar either — a reload would
+    // bring the banner back long after that party ended.
+    try { history.replaceState(null, '', location.pathname); } catch(e){}
+  }
+  refreshHome();
   if (!P.name){ openName(); return; }
-  if (pendingRoom){ const c = pendingRoom; pendingRoom = null; joinParty(c); return; }
   show('home');
 })();
