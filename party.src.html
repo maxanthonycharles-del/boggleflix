@@ -13,8 +13,11 @@
 @font-face{font-family:'Baloo 2';src:url(data:font/woff2;base64,__BALOO__) format('woff2');font-weight:400 800;font-display:block;}
 @font-face{font-family:'Fredoka';src:url(data:font/woff2;base64,__FREDOKA__) format('woff2');font-weight:300 700;font-display:block;}
 :root{
-  --stage1:#FF6FB5;    /* stage gradient top */
-  --stage2:#D6146C;    /* stage gradient bottom */
+  /* Matched to Netflix Boggle Party: sky blue at the top falling to
+     periwinkle, deep-violet dice, white letters. */
+  --stage1:#45C4F0;    /* stage gradient top */
+  --stage2:#8480FF;    /* stage gradient bottom */
+  --stage-mid:#63A8F7;
   --navy:#1E2A5E;      /* ink on bright */
   --navy-soft:#44508A;
   --cream:#FFF8E7;     /* card / chip face */
@@ -22,9 +25,9 @@
   /* The board itself, matched to Netflix's: deep purple dice with white
      letters, sitting straight on the gradient with no tray around them, and a
      bright green face for the letters under your finger. */
-  --die:#3A2160;
-  --die-2:#2B1746;
-  --die-edge:#1B0E2E;
+  --die:#4A0E78;
+  --die-2:#3A0A60;
+  --die-edge:#25063E;
   --die-lit:#5BF19A;
   --die-lit-2:#2FDD79;
   --die-lit-edge:#12A055;
@@ -49,7 +52,7 @@
 [hidden]{display:none!important}
 html,body{height:100%}
 body{
-  background:linear-gradient(170deg,var(--stage1),var(--stage2) 90%);
+  background:linear-gradient(180deg,var(--stage1),var(--stage-mid) 46%,var(--stage2) 100%);
   background-attachment:fixed;
   color:var(--navy);
   font-family:var(--body);
@@ -77,7 +80,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .screen.active{display:flex}
 
 /* ---------- shared chunky components ---------- */
-.card{background:var(--white);border-radius:22px;box-shadow:0 6px 0 rgba(30,42,94,.18),0 14px 30px rgba(130,10,62,.18);padding:18px}
+.card{background:var(--white);border-radius:22px;box-shadow:0 6px 0 rgba(30,42,94,.18),0 14px 30px rgba(20,30,120,.2);padding:18px}
 .btn{display:flex;align-items:center;justify-content:center;gap:10px;border-radius:18px;padding:16px 20px;
   font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:.01em;color:#fff;
   transition:transform .1s ease,filter .15s ease;user-select:none;-webkit-user-select:none;text-shadow:0 1px 0 rgba(0,0,0,.15)}
@@ -96,25 +99,25 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .btn[disabled]{filter:saturate(.25) brightness(.9);pointer-events:none}
 .btn.small{padding:10px 16px;font-size:15px;border-radius:14px;box-shadow-width:4px}
 .eyebrow{font-family:var(--body);font-weight:600;font-size:12px;letter-spacing:.22em;color:rgba(30,42,94,.65);text-transform:uppercase}
-.on-stage{color:#fff;text-shadow:0 2px 0 rgba(150,15,72,.25)}
+.on-stage{color:#fff;text-shadow:0 2px 0 rgba(18,26,96,.3)}
 .h1{font-family:var(--display);font-weight:800;font-size:32px;line-height:1.05;text-wrap:balance}
-.back{align-self:flex-start;font-weight:600;font-size:15px;color:#fff;text-shadow:0 1px 0 rgba(150,15,72,.3);padding:8px 12px 8px 0;display:flex;align-items:center;gap:6px}
+.back{align-self:flex-start;font-weight:600;font-size:15px;color:#fff;text-shadow:0 1px 0 rgba(18,26,96,.35);padding:8px 12px 8px 0;display:flex;align-items:center;gap:6px}
 
 /* ---------- NAME SCREEN ---------- */
 #scr-name{justify-content:center;gap:22px;text-align:center}
 .logo-lockup{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:6px}
 .logo-word{font-family:var(--display);font-weight:800;font-size:clamp(40px,11.5vw,56px);line-height:1;color:#fff;
-  text-shadow:0 3px 0 rgba(30,42,94,.9),0 8px 18px rgba(130,10,62,.35);letter-spacing:.01em}
+  text-shadow:0 3px 0 rgba(30,42,94,.9),0 8px 18px rgba(20,30,120,.35);letter-spacing:.01em}
 .logo-tiles{display:flex;gap:6px}
 .logo-tiles span{width:44px;height:44px;border-radius:11px;display:grid;place-items:center;
   font-family:var(--display);font-weight:800;font-size:24px;color:var(--navy);
-  background:var(--cream);box-shadow:0 4px 0 var(--cream-edge),0 8px 16px rgba(130,10,62,.25);
+  background:var(--cream);box-shadow:0 4px 0 var(--cream-edge),0 8px 16px rgba(20,30,120,.26);
   animation:tiledance 2.4s ease-in-out infinite}
-.logo-tiles span:nth-child(1){background:#FFD93C;box-shadow:0 4px 0 #E0AE00,0 8px 16px rgba(130,10,62,.25);animation-delay:0s}
-.logo-tiles span:nth-child(2){background:#7DE3A0;box-shadow:0 4px 0 #3BB56A,0 8px 16px rgba(130,10,62,.25);animation-delay:.15s}
-.logo-tiles span:nth-child(3){background:#8FD0FF;box-shadow:0 4px 0 #4A9BE0,0 8px 16px rgba(130,10,62,.25);animation-delay:.3s}
-.logo-tiles span:nth-child(4){background:#FFA6C9;box-shadow:0 4px 0 #E06AA0,0 8px 16px rgba(130,10,62,.25);animation-delay:.45s}
-.logo-tiles span:nth-child(5){background:#C9B3FF;box-shadow:0 4px 0 #9270E8,0 8px 16px rgba(130,10,62,.25);animation-delay:.6s}
+.logo-tiles span:nth-child(1){background:#FFD93C;box-shadow:0 4px 0 #E0AE00,0 8px 16px rgba(20,30,120,.26);animation-delay:0s}
+.logo-tiles span:nth-child(2){background:#7DE3A0;box-shadow:0 4px 0 #3BB56A,0 8px 16px rgba(20,30,120,.26);animation-delay:.15s}
+.logo-tiles span:nth-child(3){background:#8FD0FF;box-shadow:0 4px 0 #4A9BE0,0 8px 16px rgba(20,30,120,.26);animation-delay:.3s}
+.logo-tiles span:nth-child(4){background:#FFA6C9;box-shadow:0 4px 0 #E06AA0,0 8px 16px rgba(20,30,120,.26);animation-delay:.45s}
+.logo-tiles span:nth-child(5){background:#C9B3FF;box-shadow:0 4px 0 #9270E8,0 8px 16px rgba(20,30,120,.26);animation-delay:.6s}
 @keyframes tiledance{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-6px) rotate(-3deg)}}
 .name-card{display:flex;flex-direction:column;gap:16px;text-align:center}
 .name-card .h1{font-size:26px}
@@ -131,23 +134,23 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 #scr-home{gap:16px}
 .home-top{display:flex;align-items:center;justify-content:space-between}
 .me-chip{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.25);border:2px solid rgba(255,255,255,.5);
-  border-radius:999px;padding:6px 14px 6px 7px;color:#fff;font-weight:600;font-size:15px;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+  border-radius:999px;padding:6px 14px 6px 7px;color:#fff;font-weight:600;font-size:15px;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 .me-chip .face{width:30px;height:30px;border-radius:50%;background:var(--white);display:grid;place-items:center;font-size:18px}
-.sound-pill{font-weight:700;font-size:12px;letter-spacing:.14em;color:#fff;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.5);border-radius:999px;padding:8px 13px;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.sound-pill{font-weight:700;font-size:12px;letter-spacing:.14em;color:#fff;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.5);border-radius:999px;padding:8px 13px;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 .home-logo{margin:8px 0 2px}
 .home-cta{display:flex;flex-direction:column;gap:12px;margin-top:8px}
 /* an invite link's code, waiting for one tap (see boot()) */
 .invite-banner{display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.22);border:3px dashed rgba(255,255,255,.6);
   border-radius:22px;padding:13px;animation:blobin .4s cubic-bezier(.2,1.6,.4,1)}
-.invite-note{text-align:center;color:#fff;font-weight:700;font-size:14px;text-shadow:0 1px 0 rgba(150,15,72,.35)}
+.invite-note{text-align:center;color:#fff;font-weight:700;font-size:14px;text-shadow:0 1px 0 rgba(18,26,96,.4)}
 .invite-no{align-self:center;color:#fff;font-weight:600;font-size:12.5px;opacity:.85;text-decoration:underline;text-underline-offset:3px;padding:3px 8px}
-.cta-note{text-align:center;color:#fff;font-size:14px;font-weight:600;text-shadow:0 1px 0 rgba(150,15,72,.3);margin-top:-2px}
+.cta-note{text-align:center;color:#fff;font-size:14px;font-weight:600;text-shadow:0 1px 0 rgba(18,26,96,.35);margin-top:-2px}
 /* Home's door to the same settings card the lobby shows — solid white so it
    reads as a real button, not a ghost outline, and it doubles as a readout of
    what the next game is set to. */
 .set-summary{display:flex;align-items:center;gap:11px;text-align:left;background:var(--white);border-radius:20px;
-  padding:11px 12px 11px 14px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(130,10,62,.16);transition:transform .1s ease,box-shadow .1s ease}
-.set-summary:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(30,42,94,.18),0 6px 14px rgba(130,10,62,.16)}
+  padding:11px 12px 11px 14px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(20,30,120,.18);transition:transform .1s ease,box-shadow .1s ease}
+.set-summary:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(30,42,94,.18),0 6px 14px rgba(20,30,120,.18)}
 .set-summary .ss-ic{font-size:24px;line-height:1}
 .set-summary .ss-body{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
 .set-summary .ss-body b{font-family:var(--display);font-weight:800;font-size:16px;color:var(--navy)}
@@ -155,7 +158,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .set-summary .ss-go{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12.5px;color:#fff;background:var(--blue);
   border-radius:999px;padding:7px 13px;box-shadow:0 2px 0 var(--blue-edge)}
 .mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
-.mode-card{background:var(--white);border-radius:20px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(130,10,62,.16);
+.mode-card{background:var(--white);border-radius:20px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(20,30,120,.18);
   padding:14px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;transition:transform .1s ease}
 .mode-card:active{transform:translateY(3px)}
 .mode-card .ic{font-size:30px}
@@ -163,11 +166,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .mode-card span{font-size:12.5px;color:var(--navy-soft);line-height:1.35}
 .daily-done{position:absolute;top:8px;right:10px;font-size:11px;font-weight:700;background:var(--green);color:#fff;border-radius:999px;padding:3px 9px}
 .mode-card{position:relative}
-.home-foot{margin-top:auto;text-align:center;color:rgba(255,255,255,.85);font-size:12.5px;font-weight:600;text-shadow:0 1px 0 rgba(150,15,72,.25);padding-top:14px}
+.home-foot{margin-top:auto;text-align:center;color:rgba(255,255,255,.85);font-size:12.5px;font-weight:600;text-shadow:0 1px 0 rgba(18,26,96,.3);padding-top:14px}
 
 /* ---------- HALL OF FAME ---------- */
 .hof-chip{display:flex;align-items:center;gap:11px;text-align:left;background:var(--white);border-radius:20px;
-  padding:11px 12px 11px 14px;margin-top:10px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(130,10,62,.16);
+  padding:11px 12px 11px 14px;margin-top:10px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(20,30,120,.18);
   transition:transform .1s ease,box-shadow .1s ease}
 .hof-chip:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(30,42,94,.18)}
 .hof-chip .hof-ic{font-size:24px;line-height:1}
@@ -187,15 +190,15 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .hof-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;font-weight:600;font-size:14.5px;color:var(--navy)}
 .hof-row+.hof-row{border-top:2px solid #F0EDE2}
 .hof-row b{font-family:var(--display);font-weight:800;font-size:17px;color:var(--navy);max-width:56%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hof-foot{margin-top:auto;text-align:center;color:rgba(255,255,255,.9);font-size:12.5px;font-weight:600;text-shadow:0 1px 0 rgba(150,15,72,.25);padding-top:14px}
+.hof-foot{margin-top:auto;text-align:center;color:rgba(255,255,255,.9);font-size:12.5px;font-weight:600;text-shadow:0 1px 0 rgba(18,26,96,.3);padding-top:14px}
 
 /* ---------- JOIN ---------- */
 #scr-join{gap:14px}
 .join-body{flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center;padding-bottom:50px}
-.code-input{width:100%;background:var(--white);border-radius:20px;border:0;box-shadow:0 6px 0 rgba(30,42,94,.18),0 14px 30px rgba(130,10,62,.18);
+.code-input{width:100%;background:var(--white);border-radius:20px;border:0;box-shadow:0 6px 0 rgba(30,42,94,.18),0 14px 30px rgba(20,30,120,.2);
   font-family:var(--display);font-weight:800;font-size:52px;text-align:center;letter-spacing:.28em;text-indent:.28em;color:var(--navy);padding:16px 8px 12px;text-transform:uppercase}
 .code-input::placeholder{color:#D8D2C0}
-.join-note{color:#fff;font-weight:600;font-size:14px;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.join-note{color:#fff;font-weight:600;font-size:14px;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 
 /* ---------- LOBBY ---------- */
 #scr-lobby{gap:12px}
@@ -203,9 +206,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .room-banner{display:flex;flex-direction:column;align-items:center;gap:6px;padding:4px 0 2px}
 .room-code{display:flex;gap:7px}
 .room-code span{width:54px;height:58px;border-radius:13px;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:32px;
-  color:var(--navy);background:var(--cream);box-shadow:0 5px 0 var(--cream-edge),0 10px 20px rgba(130,10,62,.22)}
+  color:var(--navy);background:var(--cream);box-shadow:0 5px 0 var(--cream-edge),0 10px 20px rgba(20,30,120,.24)}
 .room-actions{display:flex;gap:8px;margin-top:6px}
-.chip-btn{font-weight:700;font-size:13px;color:#fff;background:rgba(255,255,255,.24);border:2px solid rgba(255,255,255,.55);border-radius:999px;padding:8px 15px;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.chip-btn{font-weight:700;font-size:13px;color:#fff;background:rgba(255,255,255,.24);border:2px solid rgba(255,255,255,.55);border-radius:999px;padding:8px 15px;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 .lobby-players{background:rgba(255,255,255,.2);border:2px dashed rgba(255,255,255,.55);border-radius:22px;padding:14px;min-height:112px;
   display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:center}
 .pl-blob{display:flex;flex-direction:column;align-items:center;gap:5px;width:68px;animation:blobin .35s cubic-bezier(.2,1.6,.4,1)}
@@ -213,10 +216,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .pl-blob .face{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:28px;background:var(--white);
   border:4px solid var(--c,#3B82F6);box-shadow:0 4px 0 rgba(30,42,94,.2);animation:bob 2.6s ease-in-out infinite}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-.pl-blob b{font-size:12.5px;font-weight:700;color:#fff;text-shadow:0 1px 0 rgba(150,15,72,.35);max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-blob b{font-size:12.5px;font-weight:700;color:#fff;text-shadow:0 1px 0 rgba(18,26,96,.4);max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pl-blob .tag{font-size:9.5px;font-weight:800;letter-spacing:.08em;background:var(--gold);color:var(--navy);border-radius:999px;padding:2px 7px;margin-top:-2px}
 .pl-blob.gone{opacity:.35;filter:grayscale(1)}
-.lobby-wait{color:#fff;font-weight:600;font-size:13.5px;text-align:center;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.lobby-wait{color:#fff;font-weight:600;font-size:13.5px;text-align:center;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 .settings-card{display:flex;flex-direction:column;gap:13px}
 .settings-card h3{font-family:var(--display);font-weight:800;font-size:17px;color:var(--navy);display:flex;justify-content:space-between;align-items:baseline}
 .settings-card h3 small{font-family:var(--body);font-weight:600;font-size:11.5px;color:var(--navy-soft)}
@@ -232,7 +235,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
    little narrower than the lobby, so the segments shed a couple of px. */
 .set-modal-card{max-width:370px}
 .set-modal-card .seg button{padding:8px 10px;min-width:41px}
-.set-note{font-size:12.5px;font-weight:600;line-height:1.4;color:#fff;text-align:center;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.set-note{font-size:12.5px;font-weight:600;line-height:1.4;color:#fff;text-align:center;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 .lobby-cta{display:flex;flex-direction:column;gap:9px}
 
 /* ---------- GAME ---------- */
@@ -246,20 +249,29 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 @keyframes finalpulse{0%,100%{box-shadow:inset 0 0 45px 0 rgba(75,0,22,.18)}
   50%{box-shadow:inset 0 0 110px 30px rgba(75,0,22,.72)}}
 .hud{display:flex;align-items:center;gap:8px}
-.hud-btn{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
-  font-family:var(--display);font-weight:800;font-size:15px;line-height:1;color:#fff;
-  background:rgba(30,42,94,.35);transition:transform .1s ease,background .15s ease}
-.hud-btn:active{transform:scale(.9);background:rgba(30,42,94,.55)}
+.hud-btn{flex:0 0 auto;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--display);font-weight:800;font-size:16px;line-height:1;color:#fff;
+  background:linear-gradient(180deg,var(--die),var(--die-2));box-shadow:0 3px 0 var(--die-edge);
+  transition:transform .1s ease,background .15s ease}
+.hud-btn:active{transform:translateY(2px);box-shadow:0 1px 0 var(--die-edge)}
 .hud-btn.sound{font-size:15px}
-.round-pill{font-family:var(--display);font-weight:800;font-size:14px;color:#fff;background:rgba(30,42,94,.35);border-radius:999px;padding:5px 12px;white-space:nowrap}
-.timer-wrap{flex:1;height:22px;background:rgba(30,42,94,.3);border-radius:999px;overflow:hidden;position:relative}
+.round-pill{font-family:var(--display);font-weight:800;font-size:14px;color:#fff;
+  background:linear-gradient(180deg,var(--die),var(--die-2));box-shadow:0 3px 0 var(--die-edge);
+  border-radius:999px;padding:7px 12px;white-space:nowrap}
+/* The clock is a white pill with an hourglass and the time in deep violet, the
+   way Boggle Party's is — the remaining time still drains across it as a soft
+   fill so you can feel it going without reading the numbers. */
+.timer-wrap{flex:1;max-width:190px;height:38px;background:#fff;border-radius:999px;overflow:hidden;position:relative;
+  box-shadow:0 4px 0 rgba(20,6,50,.25),0 8px 18px rgba(20,30,120,.22)}
+.timer-wrap::before{content:'⏳';position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:17px;z-index:2}
 .timer-wrap.warn{animation:timerwarn .5s ease 3}
 @keyframes timerwarn{50%{transform:scale(1.06);box-shadow:0 0 0 3px rgba(255,71,87,.6)}}
-.timer-fill{position:absolute;inset:0;width:100%;border-radius:inherit;background:linear-gradient(90deg,#00C566,#7DE33C);transition:background .4s ease}
-.timer-fill.mid{background:linear-gradient(90deg,#FFB302,#FFD93C)}
-.timer-fill.low{background:linear-gradient(90deg,#FF4757,#FF7A1A)}
-.timer-num{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:13.5px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)}
-.my-score{font-family:var(--display);font-weight:800;font-size:24px;color:#fff;text-shadow:0 2px 0 rgba(150,15,72,.35);min-width:52px;text-align:right}
+.timer-fill{position:absolute;inset:0;width:100%;border-radius:inherit;background:rgba(69,196,240,.3);transition:background .4s ease}
+.timer-fill.mid{background:rgba(255,179,2,.32)}
+.timer-fill.low{background:rgba(255,71,87,.34)}
+.timer-num{position:absolute;inset:0;display:grid;place-items:center;padding-left:20px;font-family:var(--display);font-weight:800;
+  font-size:19px;color:var(--die);font-variant-numeric:tabular-nums;z-index:2}
+.my-score{font-family:var(--display);font-weight:800;font-size:24px;color:#fff;text-shadow:0 3px 0 rgba(20,6,50,.5);min-width:46px;text-align:right}
 .my-score.bump{animation:bump .3s ease}
 @keyframes bump{40%{transform:scale(1.3)}}
 .rivals{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;min-height:44px}
@@ -271,22 +283,31 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .rival small{font-size:11px;font-weight:600;color:var(--navy-soft);max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rival.first{background:var(--gold);box-shadow:0 3px 0 var(--gold-edge)}
 .rival.gone{opacity:.4;filter:grayscale(1)}
-.word-pill-wrap{display:flex;justify-content:center;height:46px;align-items:center}
-.word-pill{min-width:130px;text-align:center;padding:7px 20px;border-radius:999px;font-family:var(--display);font-weight:800;font-size:23px;
-  letter-spacing:.1em;text-indent:.1em;color:#fff;background:rgba(30,42,94,.25);transition:background .12s,color .12s;line-height:1.1}
-.word-pill.building{background:var(--white);color:var(--navy);box-shadow:0 4px 0 rgba(30,42,94,.2)}
-.word-pill.valid{background:#B9F2CE;color:#0B7A3E;box-shadow:0 4px 0 rgba(11,122,62,.35)}
+.word-pill-wrap{display:flex;justify-content:center;height:48px;align-items:center;position:relative;margin-top:auto}
+/* The banner over the board: "Minimum N characters!" until you start tracing,
+   then the word itself — the same deep-violet pill either way, with the little
+   pink number badge hanging off its left, as in the real game. */
+.word-pill{position:relative;min-width:150px;text-align:center;padding:10px 20px;border-radius:999px;font-family:var(--display);font-weight:800;font-size:21px;
+  letter-spacing:.06em;text-indent:.06em;color:#fff;background:linear-gradient(180deg,var(--die),var(--die-2));
+  box-shadow:0 4px 0 var(--die-edge),0 8px 18px rgba(20,6,50,.3);transition:background .12s,color .12s;line-height:1.1}
+.word-pill.hint{font-size:16px;letter-spacing:.01em;text-indent:0}
+.word-pill .minbadge{position:absolute;left:-14px;top:-9px;font-family:var(--display);font-weight:800;font-size:17px;
+  color:#fff;background:linear-gradient(180deg,#FF6FD8,#E23BB0);border-radius:12px;padding:2px 9px;
+  box-shadow:0 3px 0 #A81A7E,0 6px 12px rgba(20,6,50,.3);text-shadow:0 2px 0 rgba(120,10,90,.5)}
+.word-pill.building{background:var(--white);color:var(--die);box-shadow:0 4px 0 rgba(20,6,50,.22)}
+.word-pill.valid{background:linear-gradient(180deg,var(--die-lit),var(--die-lit-2));color:#10331F;box-shadow:0 4px 0 var(--die-lit-edge)}
 .word-pill.good{background:var(--green);color:#fff;box-shadow:0 4px 0 var(--green-edge)}
 .word-pill.dupe{background:var(--gold);color:var(--navy);box-shadow:0 4px 0 var(--gold-edge)}
 .word-pill.bad{background:var(--bad);color:#fff;text-decoration:line-through;box-shadow:0 4px 0 #C21E2C}
-.board-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;container-type:size}
+.board-wrap{flex:0 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;container-type:size;
+  height:min(100vw - 24px, 58vh)}
 /* Largest square that fits, always centred. 100cqmin is the smaller of the
    board area's two sides, so a width×height of that is guaranteed square and
    guaranteed to fit both ways — it can't overflow sideways or drift off-centre.
    The width/max-height/aspect line above it is the fallback for browsers
    without container units. Replaces an older min()/dvh/aspect combo that some
    phones rendered shifted to one side. */
-.tray{background:none;border-radius:24px;padding:0;box-shadow:none;
+.tray{background:rgba(255,255,255,.3);border-radius:22px;padding:clamp(6px,1.8vw,10px);box-shadow:inset 0 1px 0 rgba(255,255,255,.45);
   width:100%;max-height:100%;aspect-ratio:1;position:relative;
   width:100cqmin;height:100cqmin;max-height:100cqmin}
 /* --gap and --tilerad are solved from the board's measured width in fitTiles()
@@ -300,7 +321,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
    keeps all four channels identical — and it's how Netflix's dice are shaded. */
 .tile{position:relative;border-radius:var(--tilerad,12px);display:grid;place-items:center;
   background:linear-gradient(180deg,var(--die),var(--die-2));
-  box-shadow:inset 0 -5px 0 var(--die-edge),inset 0 2px 2px rgba(255,255,255,.12),0 6px 16px rgba(60,5,40,.28);
+  box-shadow:inset 0 -5px 0 var(--die-edge),inset 0 2px 2px rgba(255,255,255,.12),0 6px 16px rgba(20,6,50,.35);
   transition:transform .09s ease,background .1s ease,box-shadow .1s ease}
 .tile span{font-family:var(--display);font-weight:800;line-height:1;color:#fff;pointer-events:none;font-size:var(--tilefs,34px);
   /* the bevel eats 5px off the bottom — nudge the letter into the true centre */
@@ -320,9 +341,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .path-svg.ok{opacity:.16}
 /* the floatpop keyframe is still the reveal bubbles' score pop (.bub-pop) */
 @keyframes floatpop{0%{transform:translate(-50%,0) scale(.6);opacity:0}20%{opacity:1;transform:translate(-50%,-10px) scale(1.15)}100%{transform:translate(-50%,-52px) scale(1);opacity:0}}
-.found-strip{min-height:56px}
+.found-strip{min-height:56px;margin-top:auto}
 .found-head{display:flex;justify-content:space-between;align-items:baseline;padding:0 4px 5px}
-.found-count{font-weight:700;font-size:11.5px;letter-spacing:.14em;color:#fff;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.found-count{font-weight:700;font-size:11.5px;letter-spacing:.14em;color:#fff;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 .finish{font-weight:700;font-size:12px;color:#fff;opacity:.85;text-decoration:underline;text-underline-offset:3px}
 .found-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;-webkit-overflow-scrolling:touch}
 .found-row::-webkit-scrollbar{display:none}
@@ -332,13 +353,13 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   font-family:var(--display);font-weight:800;font-size:15px;color:var(--navy);box-shadow:0 3px 0 rgba(30,42,94,.18);animation:chipin .25s ease}
 .fchip b{color:#FF7A1A;font-size:12px}
 @keyframes chipin{from{transform:scale(.5);opacity:0}}
-.found-empty{font-size:12.5px;color:rgba(255,255,255,.9);font-weight:600;padding:8px 4px;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.found-empty{font-size:12.5px;color:rgba(255,255,255,.9);font-weight:600;padding:8px 4px;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 
 /* ---------- STANDINGS / PODIUM ---------- */
 #scr-standings,#scr-podium{gap:14px}
 .stand-head{text-align:center;padding-top:8px}
 .stand-head .h1{color:#fff;text-shadow:0 3px 0 rgba(30,42,94,.85)}
-.stand-sub{color:#fff;font-weight:600;font-size:14px;text-shadow:0 1px 0 rgba(150,15,72,.3);margin-top:4px}
+.stand-sub{color:#fff;font-weight:600;font-size:14px;text-shadow:0 1px 0 rgba(18,26,96,.35);margin-top:4px}
 .stand-list{display:flex;flex-direction:column;gap:9px}
 .stand-row{display:flex;align-items:center;gap:11px;background:var(--white);border-radius:18px;padding:10px 14px 10px 10px;
   box-shadow:0 4px 0 rgba(30,42,94,.16);animation:rowin .4s ease backwards}
@@ -362,9 +383,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 /* A big round takes a while now that every word is read out and delivered.
    This is the escape hatch — never speed the words up to make it fit. */
 .rv-skip{align-self:center;margin-top:4px;font-weight:700;font-size:12.5px;color:#fff;opacity:.8;
-  text-decoration:underline;text-underline-offset:3px;padding:6px 10px;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+  text-decoration:underline;text-underline-offset:3px;padding:6px 10px;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 .rv-phase{font-family:var(--display);font-weight:800;font-size:26px;line-height:1.1;color:#fff;
-  text-shadow:0 3px 0 rgba(30,42,94,.85),0 8px 18px rgba(130,10,62,.35);animation:phasein .5s cubic-bezier(.2,1.6,.4,1)}
+  text-shadow:0 3px 0 rgba(30,42,94,.85),0 8px 18px rgba(20,30,120,.35);animation:phasein .5s cubic-bezier(.2,1.6,.4,1)}
 @keyframes phasein{from{transform:scale(.55) rotate(-2deg);opacity:0}}
 /* the players: bubbles that swell with their scores and trade places live */
 .rv-bubbles{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:0 4px}
@@ -381,7 +402,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   box-shadow:0 0 0 4px rgba(255,255,255,.95),0 0 22px 6px rgba(255,217,60,.85);animation:srcpulse 1.1s ease-in-out infinite}
 @keyframes srcpulse{50%{box-shadow:0 0 0 6px rgba(255,255,255,1),0 0 30px 10px rgba(255,217,60,1)}}
 .rv-bub.src b{color:var(--gold)}
-.rv-bub b{font-size:11.5px;font-weight:700;color:#fff;text-shadow:0 1px 0 rgba(150,15,72,.35);max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-bub b{font-size:11.5px;font-weight:700;color:#fff;text-shadow:0 1px 0 rgba(18,26,96,.4);max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rv-bub.me b{color:var(--gold)}
 .bub-score{font-family:var(--display);font-weight:800;font-size:16px;color:var(--navy);background:var(--white);
   border-radius:999px;padding:1px 10px;box-shadow:0 3px 0 rgba(30,42,94,.18);font-variant-numeric:tabular-nums}
@@ -398,7 +419,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .rv-tiles span{width:calc(var(--ts,30px)*1.6);height:calc(var(--ts,30px)*1.6);border-radius:24%;display:grid;place-items:center;
   font-family:var(--display);font-weight:800;font-size:var(--ts,30px);line-height:1;color:#fff;
   background:linear-gradient(180deg,var(--die),var(--die-2));
-  box-shadow:inset 0 -4px 0 var(--die-edge),0 8px 18px rgba(60,5,40,.3);animation:rvtile .35s cubic-bezier(.2,1.6,.4,1) backwards}
+  box-shadow:inset 0 -4px 0 var(--die-edge),0 8px 18px rgba(20,6,50,.38);animation:rvtile .35s cubic-bezier(.2,1.6,.4,1) backwards}
 @keyframes rvtile{from{transform:translateY(-26px) rotate(-8deg) scale(.5);opacity:0}}
 .rv-word.unique .rv-tiles span{background:linear-gradient(180deg,#FFEE8F,#FFD93C);color:var(--navy);
   box-shadow:inset 0 -4px 0 var(--gold-edge),0 0 26px rgba(255,217,60,.8)}
@@ -412,7 +433,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
    the card and shrinks into their avatar, and their score only moves when it
    lands. That flight is what makes "whose word was that?" answerable. */
 .rv-fly{position:fixed;left:0;top:0;z-index:70;pointer-events:none;display:flex;align-items:center;gap:7px;
-  background:var(--cream);border-radius:14px;padding:8px 13px;box-shadow:0 5px 0 var(--cream-edge),0 10px 22px rgba(130,10,62,.3);
+  background:var(--cream);border-radius:14px;padding:8px 13px;box-shadow:0 5px 0 var(--cream-edge),0 10px 22px rgba(20,30,120,.3);
   font-family:var(--display);font-weight:800;font-size:19px;color:var(--navy);white-space:nowrap}
 .rv-fly b{font-size:16px;color:#fff;background:#FF7A1A;border-radius:999px;padding:2px 9px}
 .rv-fly.u{background:linear-gradient(180deg,#FFEE8F,#FFD93C);box-shadow:0 5px 0 var(--gold-edge),0 0 22px rgba(255,217,60,.8)}
@@ -430,7 +451,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 @keyframes x2in{from{transform:scale(0) rotate(8deg)}}
 /* shared words get the identical ribbon, in white — same shape, same weight, so
    every word on the reveal reads as equally important */
-.rv-x2.shared{background:linear-gradient(180deg,#8FD0FF,#4AA8F0);color:#08315C;box-shadow:0 3px 0 #2A7BC0}
+.rv-x2.shared{background:#fff;color:var(--die);box-shadow:0 3px 0 rgba(20,6,50,.28)}
 .rv-round{position:absolute;top:2px;right:-4px;font-family:var(--display);font-weight:800;font-size:11px;color:#fff;
   background:rgba(30,42,94,.4);border-radius:999px;padding:3px 8px}
 /* the trail of words already revealed */
@@ -439,7 +460,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .rv-logchip{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12px;color:var(--navy);
   background:rgba(255,255,255,.85);border-radius:999px;padding:4px 10px;animation:chipin .25s ease}
 .rv-logchip.u{background:var(--gold);box-shadow:0 2px 0 var(--gold-edge)}
-.rv-note{color:#fff;font-weight:600;font-size:12px;text-align:center;text-shadow:0 1px 0 rgba(150,15,72,.3);opacity:.85;padding-top:2px}
+.rv-note{color:#fff;font-weight:600;font-size:12px;text-align:center;text-shadow:0 1px 0 rgba(18,26,96,.35);opacity:.85;padding-top:2px}
 .podium-stage{display:flex;align-items:flex-end;justify-content:center;gap:10px;padding:22px 0 0;min-height:220px}
 .pod{display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;max-width:110px;animation:podin .6s cubic-bezier(.2,1.5,.4,1) backwards}
 .pod .face{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:32px;background:#fff;border:4px solid var(--c,#3B82F6);box-shadow:0 4px 0 rgba(30,42,94,.25)}
@@ -467,7 +488,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 /* ---------- RESULTS EXTRAS (solo/daily reuse standings screen) ---------- */
 .wordbag{display:flex;flex-wrap:wrap;gap:6px}
 .wordbag .fchip.missed{background:rgba(255,255,255,.55);box-shadow:none;border:2px dashed rgba(30,42,94,.3);color:var(--navy-soft)}
-.sec-label{font-weight:700;font-size:11.5px;letter-spacing:.18em;color:#fff;text-shadow:0 1px 0 rgba(150,15,72,.3);margin:12px 0 7px;text-transform:uppercase}
+.sec-label{font-weight:700;font-size:11.5px;letter-spacing:.18em;color:#fff;text-shadow:0 1px 0 rgba(18,26,96,.35);margin:12px 0 7px;text-transform:uppercase}
 
 /* ---------- OVERLAY / TOAST ---------- */
 .overlay{position:fixed;inset:0;z-index:50;display:none;place-items:center;background:rgba(30,42,94,.55);backdrop-filter:blur(5px)}
@@ -503,7 +524,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .chat-sheet .chat-log{max-height:46vh;min-height:96px;justify-content:flex-end}
 .chat-log{display:flex;flex-direction:column;gap:6px;max-height:136px;overflow-y:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .chat-log::-webkit-scrollbar{display:none}
-.chat-empty{text-align:center;color:#fff;font-weight:600;font-size:12.5px;opacity:.85;padding:5px 0;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.chat-empty{text-align:center;color:#fff;font-weight:600;font-size:12.5px;opacity:.85;padding:5px 0;text-shadow:0 1px 0 rgba(18,26,96,.35)}
 .chat-msg{display:flex;align-items:flex-end;gap:6px;animation:blobin .3s cubic-bezier(.2,1.6,.4,1)}
 .chat-msg .face{flex:0 0 auto;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:15px;border:2px solid var(--c,#3B82F6)}
 .chat-bubble{max-width:78%;background:var(--white);border-radius:15px;padding:6px 11px;box-shadow:0 3px 0 rgba(30,42,94,.18)}
@@ -517,6 +538,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .chat-input::placeholder{color:#BEB7A5}
 .chat-send{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:15px;color:#fff;background:var(--green);
   border-radius:999px;padding:11px 17px;box-shadow:0 3px 0 var(--green-edge)}
+.update-bar{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:80;
+  display:flex;align-items:center;gap:10px;background:var(--navy);color:#fff;border-radius:18px;padding:10px 12px;
+  box-shadow:0 10px 26px rgba(0,0,0,.35);animation:modalin .3s cubic-bezier(.2,1.5,.4,1)}
+.update-bar span{flex:1;font-weight:600;font-size:14px}
+.update-no{color:rgba(255,255,255,.8);font-weight:600;font-size:12.5px;text-decoration:underline;text-underline-offset:3px;padding:6px}
 .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);z-index:60;background:var(--navy);color:#fff;
   font-weight:600;font-size:14px;border-radius:999px;padding:11px 20px;box-shadow:0 10px 26px rgba(0,0,0,.3);opacity:0;transition:transform .3s ease,opacity .3s ease;max-width:88vw;text-align:center}
 .toast.show{transform:translate(-50%,0);opacity:1}

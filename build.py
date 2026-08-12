@@ -11,6 +11,7 @@ Sources:
                     mqtt.bundle.js + mqtt-bus.js (the multiplayer transport:
                     a Trystero-compatible message bus over public MQTT brokers)
 """
+import hashlib
 from base64 import b64encode
 from pathlib import Path
 
@@ -32,6 +33,15 @@ baloo = read('assets/baloo2.b64').replace('\n', '').strip()
 fredoka = read('assets/fredoka.b64').replace('\n', '').strip()
 silence = read('assets/silence.b64').replace('\n', '').strip()
 
+# A stamp of what went into this build. The page carries it, and version.txt
+# next to it says what the server currently has — so a phone holding an old copy
+# in memory (which is every phone, all day) can notice and offer to update
+# instead of the family silently playing last week's game.
+BUILD = hashlib.sha256(
+    (src + app + vendor + words + common).encode()
+).hexdigest()[:12]
+
+assert '__BUILD__' in app, 'build placeholder missing from app js'
 assert '__DICT__' in app, 'dict placeholder missing from app js'
 assert '__SILENCE__' in app, 'silence placeholder missing from app js'
 assert '__COMMON__' in app, 'common-words placeholder missing from app js'
@@ -52,7 +62,8 @@ def common_bits(all_words, common_words):
         f'{len(common_set) - hits} common words are not in dict.txt — regenerate both')
     return b64encode(bytes(bits)).decode()
 
-app = (app.replace('__DICT__', words)
+app = (app.replace('__BUILD__', BUILD)
+          .replace('__DICT__', words)
           .replace('__SILENCE__', silence)
           .replace('__COMMON__', common_bits(words.split(), common.split())))
 
@@ -65,4 +76,5 @@ out = (src
        .replace('__APP__', js_safe(app)))
 
 (root / 'index.html').write_text(out)
-print(f'index.html {len(out.encode()):,} bytes')
+(root / 'version.txt').write_text(BUILD + '\n')
+print(f'index.html {len(out.encode()):,} bytes  build {BUILD}')

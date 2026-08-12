@@ -474,6 +474,44 @@ const GOSSIP_TTL = 14000; // forget an indirect peer nobody has mentioned this l
 const HOST_GRACE_MS = 6000; // how long a joiner waits to hear a host claim before taking it
 const DEV = /[?#&]dev\b/.test(location.href);
 
+/* ---------------- staying up to date ----------------
+   The whole game is one big HTML file that phones hold on to — a page opened
+   this morning keeps running this morning's code until something makes it
+   reload, which is why a deploy can land and nobody sees it. version.txt sits
+   next to index.html and says what the server has right now; a few bytes,
+   never cached. If it disagrees with the build baked into this page, offer the
+   update — never mid-round, and never without asking. */
+const BUILD = "__BUILD__";
+let updateReady = null;
+async function checkForUpdate(){
+  if (updateReady || G.playing) return;
+  try {
+    const r = await fetch('version.txt?t=' + Date.now(), {cache: 'no-store'});
+    if (!r.ok) return;
+    const v = (await r.text()).trim();
+    if (v && v !== BUILD){ updateReady = v; showUpdateBar(); }
+  } catch(e){}
+}
+function showUpdateBar(){
+  if ($('update-bar')) return;
+  const bar = el('div','update-bar');
+  bar.appendChild(el('span','', '✨ There\u2019s a newer version'));
+  const go = el('button','btn green small','Update');
+  go.addEventListener('click', () => {
+    // a fresh URL, so the phone fetches rather than serving what it already has
+    location.replace(location.pathname + '?v=' + encodeURIComponent(updateReady));
+  });
+  bar.appendChild(go);
+  const no = el('button','update-no','later');
+  no.addEventListener('click', () => bar.remove());
+  bar.appendChild(no);
+  bar.id = 'update-bar';
+  document.body.appendChild(bar);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+setTimeout(checkForUpdate, 4000);
+setInterval(checkForUpdate, 5 * 60 * 1000);
+
 /* ---------------- screens / toast / overlay ---------------- */
 const SCREENS = ['name','home','hof','join','lobby','game','standings','reveal','podium'];
 function show(name){
@@ -1440,7 +1478,7 @@ function beginRound(){
   $('found-empty').textContent = 'swipe the letters to spell a word!';
   $('found-count').textContent = '0 WORDS';
   $('btn-finish').hidden = G.mode === 'party';
-  pill.className = 'word-pill'; pill.textContent = ' ';
+  idleBanner();
   $('timer-fill').style.width = '100%'; $('timer-fill').className = 'timer-fill';
   $('timer-num').textContent = fmtTime(G.totalMs);
   renderRivals();
@@ -1616,8 +1654,8 @@ function setSel(){
     t.classList.toggle('ok', on && isValid);
   });
   drawPath();
-  if (!w){ pill.className = 'word-pill'; pill.textContent = ' '; return; }
-  pill.textContent = w;
+  if (!w){ idleBanner(); return; }
+  pill.replaceChildren(document.createTextNode(w));
   pill.className = 'word-pill building' + (isValid ? ' valid' : '');
 }
 function addToPath(i){
@@ -1712,10 +1750,18 @@ function submitPath(){
   if (G.net) G.net.A.sc.send({r: G.round, s: G.score, gid: G.gameId});
   renderRivals();
 }
+/* Idle, the banner states the rule — the real game's "Minimum 5 characters!"
+   with its little pink badge — so the space above the board is never dead. */
+function idleBanner(){
+  pill.className = 'word-pill hint';
+  pill.replaceChildren(el('span','minbadge', String(G.cfg.m)),
+                       document.createTextNode('Minimum ' + G.cfg.m + ' letters!'));
+}
 function flashPill(cls, text){
-  pill.textContent = text; pill.className = 'word-pill ' + cls;
+  pill.replaceChildren(document.createTextNode(text));
+  pill.className = 'word-pill ' + cls;
   clearTimeout(flashPill.t);
-  flashPill.t = setTimeout(() => { if (!G.path.length){ pill.className = 'word-pill'; pill.textContent = ' '; } }, 900);
+  flashPill.t = setTimeout(() => { if (!G.path.length) idleBanner(); }, 900);
 }
 $('btn-finish').addEventListener('click', () => { if (G.playing && G.mode !== 'party') roundOver(false); });
 window.__end = () => G.playing && roundOver(false);
