@@ -115,6 +115,11 @@
        hello immediately and drag any dead broker connection back up. */
     function revive() {
       if (!alive) return;
+      /* Our clock kept running while the sockets were frozen, so every peer now
+         looks long dead. Un-age them to just inside the timeout: one heartbeat
+         confirms whoever is still there, instead of us dropping the whole party
+         in a single tick the moment the screen wakes. */
+      peers.forEach(function (ts, id) { peers.set(id, Math.max(ts, Date.now() - PEER_TTL_MS)); });
       for (var i = 0; i < clients.length; i++) {
         var c = clients[i];
         if (c && !c.connected && typeof c.reconnect === 'function') { try { c.reconnect(); } catch (e) {} }

@@ -361,7 +361,13 @@ document.addEventListener('click', function unlockAudio(){
 // spectators watching mid-round get silence too.
 function inRound(){ return $('scr-game').classList.contains('active') && !G.spectating; }
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) Music.stop(); else if (inRound()) Music.start();
+  if (document.hidden){ Music.stop(); return; }
+  /* Coming back from a sleep, every peer looks silent for as long as we were
+     away — and a phone that concludes everyone is gone crowns ITSELF, then
+     gossips h:true and fights the real host. Give everyone the benefit of the
+     doubt for a few seconds and let the heartbeats prove it either way. */
+  for (const [,p] of G.peers) p.seen = Math.max(p.seen || 0, Date.now() - 5000);
+  if (inRound()) Music.start();
 });
 
 /* ---------------- global state ---------------- */
@@ -370,7 +376,17 @@ const COLORS = ['#FF5757','#FF9F1C','#F5C400','#3DDC5A','#00B8A0','#3B82F6','#8B
 const P = {   // me + app prefs
   name: store.get('name', ''),
   emoji: store.get('emoji', ''),
-  sound: store.get('sound', true)
+  sound: store.get('sound', true),
+  /* The transport mints a NEW selfId on every page load, so a phone that
+     reloads — iOS reclaiming the tab, a pull-to-refresh, our own "Rejoin
+     party" banner — used to come back as a stranger: the party saw two of
+     them, one holding all the points and one on zero, and the ghost could
+     even take a medal on the podium. This id survives a reload, so a
+     returning player is recognised as themselves. */
+  pid: store.get('pid', '') || (() => {
+    const v = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    store.set('pid', v); return v;
+  })()
 };
 const G = {   // current game context
   mode: null,          // 'party' | 'solo' | 'daily'
@@ -598,6 +614,17 @@ function saveRecord(r){ store.set('record', r); }
 function creditGame(rows){
   if (G.mode !== 'party' || !G.gameId) return;
   if (store.get('counted', null) === G.gameId) return;
+  /* Don't bank a win off a provisional podium. The last straggler's report can
+     still reorder it, and once 'counted' is written the record can never be
+     corrected — the phone would claim a win for a game the screen says was
+     lost, and gossip that claim to the party leaderboard. Anyone with no
+     evidence of playing (a spectator) can't hold this up, and 8s after the
+     buzzer we take what we have. */
+  const rl = G.cfg.r - 1;
+  const played = activePlayers().filter(([,p]) =>
+    (p.me ? G.finsSelf[rl] : p.fin && p.fin[rl]) || (p.sc && p.sc[rl] !== undefined));
+  const reported = played.filter(([,p]) => p.me ? G.finsSelf[rl] : (p.fin && p.fin[rl]));
+  if (reported.length < played.length && Date.now() - (G.finAt || 0) < 8000) return;
   store.set('counted', G.gameId);
   const r = record();
   const me = rows.findIndex(x => x.p.me);
@@ -620,7 +647,8 @@ function creditRound(fin){
 }
 function myProfile(){
   const r = record();
-  return {n: P.name, e: P.emoji, h: G.isHost, j: G.joinedAt, rec: {w: r.wins, g: r.games, p: r.pb}};
+  return {n: P.name, e: P.emoji, h: G.isHost, j: G.joinedAt, pid: P.pid,
+          rec: {w: r.wins, g: r.games, p: r.pb}};
 }
 /* Everything we know about the party, re-broadcast on a timer. The mesh is not
    always complete — two phones can both be talking to a third but not to each
@@ -635,11 +663,20 @@ function syncPayload(){
   const players = {};
   G.seq++;
   const myRec = record();
-  players[Trystero.selfId] = {n: P.name, e: P.emoji, j: G.joinedAt, h: G.isHost, q: G.seq, sc: scSelf(), fin: G.finsSelf,
+  players[Trystero.selfId] = {n: P.name, e: P.emoji, j: G.joinedAt, h: G.isHost, q: G.seq,
+                              gid: G.gameId, pid: P.pid, sc: scSelf(), fin: G.finsSelf,
                               rec: {w: myRec.wins, g: myRec.games, p: myRec.pb}};
   for (const [id, p] of G.peers){
-    if (p.gone) continue;
-    const relayed = {n: p.name, e: p.emoji, j: p.joinedAt, h: !!p.host, sc: p.sc || {}, fin: p.fin || {}};
+    /* A finished round is immutable history — keep relaying it even after that
+       player leaves. It used to stop the moment they were marked gone, so any
+       phone that was off-net for their one-shot report never learned it,
+       computed the unique bonus against one list too few, and paid DOUBLE for
+       words that were actually shared — permanently, right into the podium.
+       g:1 marks the entry results-only so it can't resurrect them into the
+       lobby or the host election. */
+    const relayed = {n: p.name, e: p.emoji, j: p.joinedAt, h: !!p.host, gid: p.gid, pid: p.pid,
+                     sc: p.sc || {}, fin: p.fin || {}};
+    if (p.gone) relayed.g = 1;
     if (p.rec) relayed.rec = p.rec;
     if (Number.isFinite(p.seq)) relayed.q = p.seq;
     players[id] = relayed;
@@ -650,31 +687,56 @@ function syncPayload(){
    self: `inc` is their own account of themselves, so it wins on name/avatar. */
 function mergePlayer(id, inc, {live = false, self = false} = {}){
   let cur = G.peers.get(id), isNew = false;
+  // Same person, new transport id (they reloaded): carry their history over to
+  // the new id instead of leaving a ghost holding all their points.
+  if (!cur && inc.pid){
+    for (const [oid, op] of G.peers){
+      if (op.pid === inc.pid && oid !== id){
+        G.peers.delete(oid); G.peers.set(id, op); cur = op;
+        cur.gone = false; cur.gone2 = false;
+        break;
+      }
+    }
+  }
   if (!cur){
     cur = {name:'Player', emoji:'🙂', joinedAt: Date.now(), host:false, gone:false,
            sc:{}, fin:{}, seq:-Infinity, seen:0, direct:false};
     G.peers.set(id, cur);
     isNew = true;
   }
-  // Scores only grow within a round and finals never change, so merging these
-  // is safe from any source and in any order.
-  for (const r in inc.sc||{}) cur.sc[r] = Math.max(cur.sc[r]||0, inc.sc[r]||0);
-  for (const r in inc.fin||{}) if (!cur.fin[r]) cur.fin[r] = inc.fin[r];
+  if (inc.pid) cur.pid = inc.pid;
+  /* Scores belong to a GAME. Nothing used to say which one, and fin is
+     write-once — so one straggler still gossiping the previous game (parked in
+     pendingStart, or one that missed the "play again") permanently fixed round
+     0's report on every phone that heard it. The real report was then discarded
+     for good: the reveal staged words that were never on this board and the ×2
+     came out wrong for everyone. Unknown gid (solo, or a phone on the old
+     build) is still accepted, so nothing breaks mid-party. */
+  const gid = inc.gid === undefined ? null : inc.gid;
+  if (gid === null || gid === G.gameId){
+    for (const r in inc.sc||{}) cur.sc[r] = Math.max(cur.sc[r]||0, inc.sc[r]||0);
+    // `self` is their own first-hand report — it must be able to replace hearsay
+    for (const r in inc.fin||{}) if (self || !cur.fin[r]) cur.fin[r] = inc.fin[r];
+    if (gid !== null) cur.gid = gid;
+  } else if (cur.gid !== gid){
+    cur.gid = gid; cur.sc = {}; cur.fin = {};   // they moved on to another game
+  }
 
   const q = typeof inc.q === 'number' ? inc.q : null;
   const fresh = live || isNew || (q !== null && q > cur.seq);
   if (fresh){
     if (q !== null && q > cur.seq) cur.seq = q;
     cur.seen = Date.now();
-    cur.gone = false; cur.gone2 = false; // back with us — let a future exit announce again
+    if (!inc.g){ cur.gone = false; cur.gone2 = false; } // back with us — let a future exit announce again
     if (inc.n !== undefined) cur.name = String(inc.n||'Player').slice(0,14);
     if (inc.e !== undefined) cur.emoji = inc.e || '🙂';
     if (inc.j !== undefined) cur.joinedAt = inc.j;
     if (inc.h !== undefined) cur.host = !!inc.h;
     if (inc.rec) cur.rec = inc.rec;   // their lifetime record, for the party leaderboard
   }
+  if (inc.g && isNew){ cur.gone = true; cur.gone2 = true; }  // relayed history, not an arrival
   if (self) cur.direct = true;
-  return isNew;
+  return isNew && !inc.g;   // no join-ding for someone who already left
 }
 function connect(code, asHost){
   leaveNet();
@@ -682,6 +744,10 @@ function connect(code, asHost){
   G.peers = new Map(); G.finsSelf = {}; G.round = 0; G.seeds = [];
   G.spectating = false; G.seq = 0;
   G.pendingStart = null; G.pendingNext = null; G.pendingAgain = false;
+  /* Rejoining the party you just left has to re-learn the game from scratch. Left
+     set, G.beganKey made every one of the host's start re-broadcasts look like a
+     repeat, so the phone sat in the lobby for the rest of the night. */
+  G.gameId = null; G.beganKey = null; G.startAt = 0; G.playing = false;
   G.chat = []; chatDrawn = 0; renderChat();   // a new party starts with an empty chat
   lobbySig = null;  // new room — force the roster to rebuild
   if (asHost) G.cfg = store.get('cfg', {g:4, t:180, m:3, r:3});
@@ -730,8 +796,12 @@ function connect(code, asHost){
   };
   room.onPeerLeave = id => {
     const p = G.peers.get(id);
+    const wasHost = !!(p && p.host);
     if (p){ p.direct = false; p.gone = true; }
     electHost();
+    // The grace that protects a blinking host also delays a real handover, so
+    // look again once it has expired rather than waiting on a message.
+    if (wasHost) setTimeout(electHost, HOST_SILENCE_MS + 500);
     renderLobbyPlayers(); renderRivals();
     maybeFinishCollection();
     // Losing our own link to someone doesn't mean they left the party — someone
@@ -766,11 +836,11 @@ function connect(code, asHost){
   A.start.onMessage = d => { if (!G.isHost) handleStart(d); };
   A.nxt.onMessage = d => { if (!G.isHost) handleNext(d); };
   A.sc.onMessage = (d, {peerId}) => {
-    mergePlayer(peerId, {sc: {[d.r]: d.s}}, {live: true, self: true});
+    mergePlayer(peerId, {gid: d.gid, sc: {[d.r]: d.s}}, {live: true, self: true});
     renderRivals();
   };
   A.fin.onMessage = (d, {peerId}) => {
-    mergePlayer(peerId, {sc: {[d.r]: d.s}, fin: {[d.r]: d}}, {live: true, self: true});
+    mergePlayer(peerId, {gid: d.gid, sc: {[d.r]: d.s}, fin: {[d.r]: d}}, {live: true, self: true});
     maybeFinishCollection(); // refreshes whichever results screen is up
   };
   /* Never yank a phone out of a live round. The host can reach the podium and
@@ -790,6 +860,11 @@ function connect(code, asHost){
   clearInterval(G.gossipTimer);
   G.gossipTimer = setInterval(() => {
     if (!G.net) return;
+    /* Re-check the crown every tick. With two phones, the host leaving cleanly
+       used to leave the survivor hostless forever: onPeerLeave elected once
+       while the 30s grace still covered the departed host, and nothing ever
+       ran the election again — no Start button, no next round, no way out. */
+    electHost();
     G.net.A.sync.send(syncPayload());
     // While the host is mid-round, keep re-announcing the round so any phone
     // that missed the one-shot start (backgrounded, dropped packet, joined a
@@ -826,7 +901,13 @@ function leaveNet(){
   if (G.net){ try { G.net.room.leave(); } catch(e){} }
   G.net = null;
 }
-window.addEventListener('pagehide', leaveNet);
+/* iOS fires pagehide when the app is merely backgrounded or the page enters the
+   back/forward cache — and leaveNet() publishes __bye, which drops that phone
+   from everyone's party INSTANTLY, bypassing the entire 30s/45s grace. It also
+   sets alive=false, so the bus never reconnects. That is a live player being
+   thrown out of a running game for switching apps. Only announce a departure
+   when the page is really going away. */
+window.addEventListener('pagehide', e => { if (!e.persisted) leaveNet(); });
 
 function sanitizeCfg(d){
   const pick = (v, list, dflt) => list.includes(v) ? v : dflt;
@@ -879,7 +960,10 @@ function electHost(){
      lobby flap: the settings unlocked, then re-locked the instant the real host
      was heard, throwing away a pick made in between. Wait out a short grace
      period first; a genuinely host-less room still migrates, just a beat later. */
-  if (!claimers.length && !G.isHost && act.length > 1 && Date.now() - G.joinedAt < HOST_GRACE_MS) return;
+  // (Was also gated on act.length > 1, which meant the LAST phone standing skipped
+  //  the anti-flap wait entirely — and, worse, that the crown was only ever
+  //  re-evaluated when a message arrived, which for a lone survivor is never.)
+  if (!claimers.length && !G.isHost && Date.now() - G.joinedAt < HOST_GRACE_MS) return;
   const pool = (claimers.length ? claimers : act);
   // prefer a phone we're actually hearing from over one that's merely not-yet-timed-out
   const live = pool.filter(([,p]) => !p.gone);
@@ -1039,6 +1123,7 @@ function quitToHome(){
   clearSel();
   leaveNet();
   G.mode = null; G.code = null; G.seeds = []; G.round = 0;
+  G.gameId = null; G.beganKey = null; G.startAt = 0;
   G.peers = new Map(); G.finsSelf = {};
   refreshHome();
   show('home');
@@ -1157,25 +1242,38 @@ function hostStartGame(){
   beginRound();
 }
 function handleStart(d){
-  // The host re-broadcasts this every few seconds so a phone that missed the
-  // one-shot start (backgrounded, a dropped packet, joined a moment late) still
-  // gets pulled into the round. Ignore a repeat of a round we're already in, or
-  // it would restart the board and wipe the words we've found.
-  const key = (d.gid || '?') + ':' + (d.round || 0);
+  /* The host re-broadcasts this every few seconds so a phone that missed the
+     one-shot start (backgrounded, a dropped packet, joined a moment late) still
+     gets pulled into the round. Ignore a repeat of a round we're already in, or
+     it would restart the board and wipe the words we've found. */
+  const gid = d.gid || null;
+  const key = (gid || '?') + ':' + (d.round || 0);
   if (key === G.beganKey) return;
   // A start for some OTHER game while this phone is mid-round would wipe the
   // words it has found. Hold it until the round is over — see routeAfterRound.
   if (G.playing){ G.pendingStart = d; return; }
-  G.gameId = d.gid || G.gameId;
-  G.seeds = d.seeds || [];
+  const hadGame = G.gameId;
+  const newGame = gid !== G.gameId;
+  if (!newGame && (d.round || 0) < G.round) return;   // never go backwards inside a game
+  G.gameId = gid || G.gameId;
+  G.seeds = d.seeds || G.seeds;        // a start without seeds must never blank the list
   G.cfg = sanitizeCfg(d.cfg || {});
   G.round = d.round || 0;
   G.clockOffset = (d.hostNow || Date.now()) - Date.now();
   G.startAt = (d.startAt || Date.now()) - G.clockOffset;
-  G.finsSelf = {};
-  // A fresh game: drop any scores merged from a previous one, or they would
-  // bleed into the new totals (scores merge by max, so they never shrink).
-  for (const [,p] of G.peers){ p.sc = {}; p.fin = {}; }
+  /* ONLY a genuinely new game clears history. This used to run on every start
+     whose key differed — so missing one "next round" and being rescued by the
+     host's re-broadcast silently erased every earlier round you had played, and
+     nothing on the network could give it back (sync ignores your own id). Your
+     phone then showed a lower total than everyone else's for the rest of the
+     game. hadGame guards a rejoin, which has nothing to wipe. */
+  if (newGame && hadGame){
+    G.finsSelf = {};
+    for (const [,p] of G.peers){ p.sc = {}; p.fin = {}; }
+  }
+  // Reclaim our own reports if this phone was reloaded mid-game (see roundOver).
+  const saved = store.get('myfins', null);
+  if (saved && saved.gid === G.gameId && !Object.keys(G.finsSelf).length) G.finsSelf = saved.fins || {};
   beginRound();
 }
 function hostNextRound(){
@@ -1242,6 +1340,12 @@ function startLocal(mode){
 let tileEls = [];
 const boardEl = $('board'), pathSvg = $('path-svg'), pill = $('word-pill');
 function beginRound(){
+  /* No seed for this round means we don't have this game yet (a rejoin, a start
+     we missed). Stop here — running on would stamp G.beganKey and then throw in
+     genBoard(undefined), which poisons the key so every later start broadcast is
+     discarded too, stranding the phone in the lobby permanently. */
+  const seed = G.seeds[G.round];
+  if (!seed){ G.playing = false; return; }
   ensureDict();
   rememberParty();   // a phone killed mid-round can find its way back
   clearReveal();
@@ -1250,7 +1354,7 @@ function beginRound(){
   G.spectating = G.mode === 'party' && Date.now() > G.startAt + 3000;
   G.n = G.cfg.g;
   G.adj = adjacency(G.n);
-  G.board = genBoard(G.seeds[G.round], G.n);
+  G.board = genBoard(seed, G.n);
   G.path = []; G.found = new Map(); G.score = 0; G.possible = null;
   G.playing = false;
   G.warned = false;
@@ -1260,6 +1364,7 @@ function beginRound(){
   $('round-pill').textContent = 'R' + (G.round+1) + '/' + G.cfg.r;
   $('my-score').textContent = '0';
   $('found-row').replaceChildren($('found-empty')); $('found-empty').style.display = '';
+  $('found-empty').textContent = 'swipe the letters to spell a word!';
   $('found-count').textContent = '0 WORDS';
   $('btn-finish').hidden = G.mode === 'party';
   pill.className = 'word-pill'; pill.textContent = ' ';
@@ -1280,11 +1385,19 @@ function beginRound(){
   if (G.spectating){
     overlay('👀', 'Round in progress — you join the next one!', 'word');
     setTimeout(hideOverlay, 2200);
-    // watch live, then results arrive via fins
+    /* Say so, and keep the clock moving. A full board with a frozen 100% timer
+       and "swipe the letters to spell a word!" underneath is indistinguishable
+       from an app that has hung — which is exactly what it looked like. */
+    pill.className = 'word-pill'; pill.textContent = 'Watching — you play the next round';
+    $('found-empty').textContent = 'Watching this round';
     clearInterval(G.specTimer);
     G.specTimer = setInterval(() => {
       if (!G.seeds.length){ clearInterval(G.specTimer); G.specTimer = 0; return; }
       const left = G.startAt + G.totalMs - Date.now();
+      const pct = Math.max(0, left / G.totalMs);
+      $('timer-fill').style.width = (pct*100) + '%';
+      $('timer-fill').className = 'timer-fill' + (pct < .2 ? ' low' : pct < .5 ? ' mid' : '');
+      $('timer-num').textContent = fmtTime(Math.max(0, left));
       if (left <= 0){ clearInterval(G.specTimer); G.specTimer = 0; roundOver(true); }
     }, 500);
     return;
@@ -1494,8 +1607,11 @@ function submitPath(){
   const w = wordFromPath(), lw = w.toLowerCase(), tiles = G.path.slice();
   G.path = [];
   if (lw.length < G.cfg.m){
-    if (lw.length >= 3) flashPill('bad', w + ' — too short!');
-    setSel(); return;
+    // setSel() repaints the pill from the (now empty) path in the same tick, so
+    // the message never survived — on a 5×5 the word just silently vanished.
+    if (lw.length >= 3){ flashPill('bad', w + ' — too short!'); snd.bad(); clearSel(); }
+    else setSel();
+    return;
   }
   if (G.found.has(lw)){ flashPill('dupe', w); snd.dupe(); clearSel(); return; }
   if (!DICT.has(lw)){
@@ -1516,7 +1632,7 @@ function submitPath(){
   $('found-row').prepend(chip);
   $('found-count').textContent = G.found.size + (G.found.size === 1 ? ' WORD' : ' WORDS');
   clearSel();
-  if (G.net) G.net.A.sc.send({r: G.round, s: G.score});
+  if (G.net) G.net.A.sc.send({r: G.round, s: G.score, gid: G.gameId});
   renderRivals();
 }
 function flashPill(cls, text){
@@ -1609,13 +1725,27 @@ function renderRivals(){
 }
 
 /* ---------------- round over / standings ---------------- */
+/* The platform drops a screen lock whenever the page hides, and this was only
+   ever taken once at the start of a round — so one glance at a notification
+   cost the lock for the rest of the round and the phone slept while its owner
+   was still thinking about the board. */
+let wantWake = false;
 function requestWake(){
-  try { navigator.wakeLock && navigator.wakeLock.request('screen').then(l => G.lock = l).catch(()=>{}); } catch(e){}
+  wantWake = true;
+  try {
+    navigator.wakeLock && navigator.wakeLock.request('screen')
+      .then(l => { if (wantWake) G.lock = l; else l.release().catch(()=>{}); })
+      .catch(()=>{});
+  } catch(e){}
 }
-function releaseWake(){ try { if (G.lock){ G.lock.release(); G.lock = null; } } catch(e){} }
+function releaseWake(){ wantWake = false; try { if (G.lock){ G.lock.release(); G.lock = null; } } catch(e){} }
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && wantWake){ G.lock = null; requestWake(); }
+});
 
 function roundOver(wasSpectating){
   G.playing = false;
+  G.finAt = Date.now();   // when this round's reports started arriving (see creditGame)
   $('scr-game').classList.remove('final-countdown');
   Music.stop(); // the song ends with the round — standings and podium are quiet
   cancelAnimationFrame(G.raf);
@@ -1633,13 +1763,14 @@ function roundOver(wasSpectating){
   const fin = {r: G.round, s: G.score, w: G.found.size, b: best ? best[0] : '', bp: best ? best[1] : 0, words: [...G.found.keys()]};
   if (!wasSpectating){
     G.finsSelf[G.round] = fin;
+    if (G.mode === 'party' && G.gameId) store.set('myfins', {gid: G.gameId, fins: G.finsSelf});
     if (G.score > store.get('best',0)) store.set('best', G.score);
     creditRound(fin);
     if (G.mode === 'daily'){
       const k = 'daily-' + todayKey();
       if (G.score > (store.get(k, -1))) store.set(k, G.score);
     }
-    if (G.net) G.net.A.fin.send(fin);
+    if (G.net) G.net.A.fin.send({...fin, gid: G.gameId});
   }
   clearTimeout(G.finTimer);
   G.finTimer = setTimeout(() => { hideOverlay(); routeAfterRound(); }, wasSpectating ? 800 : 1400);
@@ -1657,11 +1788,30 @@ function routeAfterRound(){
   if (G.pendingNext){ const d = G.pendingNext; G.pendingNext = null; G.pendingAgain = false; handleNext(d); return; }
   if (G.pendingAgain){ G.pendingAgain = false; resetToLobby(); return; }
   const last = G.round >= G.cfg.r - 1;
-  runReveal(() => {
+  const cb = () => {
     renderPodium(); show('podium');
     confettiBurst();
     last ? snd.fanfare() : snd.up();
-  });
+  };
+  /* The show used to be staged from whatever had arrived 1.4s after the buzzer.
+     A phone that reported late had its words presented as "NOBODY ELSE FOUND
+     IT — DOUBLE!", and then the podium one screen later showed the corrected,
+     lower total — the score visibly dropping straight after the family watched
+     it counted up. Wait for the reports, but ONLY briefly: a mid-round joiner
+     spectates and never reports at all, so "everyone is in" is not a condition
+     that always comes true. */
+  /* Bounded by the CLOCK, not by a count of ticks: a backgrounded phone has its
+     timers throttled to about a second each, so counting ticks would have meant
+     waiting ten real seconds there. Never more than 4s under any conditions. */
+  let seen = roundReports(G.round).length;
+  let deadline = Date.now() + 2500;
+  const hardStop = Date.now() + 4000;
+  (function waitForReports(){
+    const n = roundReports(G.round).length;
+    if (n > seen){ seen = n; deadline = Math.min(hardStop, Math.max(deadline, Date.now() + 600)); }
+    if (n >= activePlayers().length || Date.now() >= deadline){ runReveal(cb); return; }
+    revealTimers.push(setTimeout(waitForReports, 200));
+  })();
 }
 function maybeFinishCollection(){ // a straggler's report arrived — refresh whichever results screen is up
   if (G.playing) return;
@@ -2044,9 +2194,14 @@ function runReveal(done){
   }
   // Everyone's final number is already known — the show just performs it.
   function snapTotals(){
+    // Recompute rather than trusting the totals captured when the show began —
+    // a report that landed mid-show would otherwise make the number change
+    // again on the podium, one screen later.
     rows.forEach(r => {
       const b = bubbles.get(r.id);
-      if (b && b.score !== r.total){ b.score = r.total; b.sc.textContent = String(r.total); }
+      if (!b) return;
+      const t = totalsFor(r.id, r.p);
+      if (b.score !== t){ b.score = t; b.sc.textContent = String(t); }
     });
     reorder();
   }
