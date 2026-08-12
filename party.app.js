@@ -392,6 +392,8 @@ const G = {   // current game context
   finsSelf: {},        // round -> fin payload (mine)
   lock: null,
   finTimer: 0,
+  chat: [],            // party chat, newest last — lives as long as the room does
+  selOk: false,        // the trace currently spells a real word
   specTimer: 0,        // spectator watch interval
   gossipTimer: 0,      // periodic roster/score broadcast
   sweepTimer: 0,       // drops gossiped peers nobody reports any more
@@ -579,6 +581,7 @@ function connect(code, asHost){
   G.mode = 'party'; G.code = code; G.isHost = asHost; G.joinedAt = Date.now();
   G.peers = new Map(); G.finsSelf = {}; G.round = 0; G.seeds = [];
   G.spectating = false; G.seq = 0;
+  G.chat = []; renderChat();   // a new party starts with an empty chat
   lobbySig = null;  // new room — force the roster to rebuild
   if (asHost) G.cfg = store.get('cfg', {g:4, t:180, m:3, r:3});
 
@@ -607,7 +610,8 @@ function connect(code, asHost){
     nxt:   room.makeAction('nxt'),
     sc:    room.makeAction('sc'),
     fin:   room.makeAction('fin'),
-    again: room.makeAction('again')
+    again: room.makeAction('again'),
+    chat:  room.makeAction('chat')
   };
   G.net = {room, A};
 
@@ -669,6 +673,10 @@ function connect(code, asHost){
     maybeFinishCollection(); // refreshes whichever results screen is up
   };
   A.again.onMessage = () => { if (!G.isHost) resetToLobby(); };
+  A.chat.onMessage = (d, {peerId}) => {
+    const p = G.peers.get(peerId) || {};
+    addChat({id: peerId, n: (d && d.n) || p.name || 'someone', e: (d && d.e) || p.emoji || '🙂', t: d && d.t});
+  };
 
   clearInterval(G.gossipTimer);
   G.gossipTimer = setInterval(() => {
@@ -762,6 +770,64 @@ function electHost(){
   }
 }
 
+/* ================================================================
+   PARTY CHAT — one panel, moved between the lobby and the podium the same way
+   the settings card is, so the conversation survives the trip from the results
+   back to the lobby for the next game. Party mode only: there's nobody to talk
+   to in solo or the daily.
+   ================================================================ */
+const CHAT_MAX = 60;
+function mountChat(slotId){
+  const panel = $('chat-panel');
+  $(slotId).appendChild(panel);
+  panel.hidden = G.mode !== 'party';
+  renderChat();
+}
+function addChat(m){
+  if (!m || typeof m.t !== 'string') return;
+  const text = m.t.trim().slice(0, 120);
+  if (!text) return;
+  G.chat.push({id: m.id, n: String(m.n || 'someone').slice(0, 14), e: m.e || '🙂', t: text, me: !!m.me});
+  if (G.chat.length > CHAT_MAX) G.chat.splice(0, G.chat.length - CHAT_MAX);
+  renderChat();
+  if (!m.me && !G.playing) snd.tick(5);
+}
+function renderChat(){
+  const log = $('chat-log');
+  if (!log) return;
+  log.replaceChildren();
+  if (!G.chat.length){
+    log.appendChild(el('div','chat-empty','Say something to the party! 👋'));
+    return;
+  }
+  for (const m of G.chat){
+    const row = el('div','chat-msg' + (m.me ? ' me' : ''));
+    const face = el('span','face', m.e);
+    face.style.setProperty('--c', colorOf(m.id));
+    const bub = el('div','chat-bubble');
+    bub.appendChild(el('b','', m.me ? 'you' : m.n));
+    bub.appendChild(el('span','', m.t));
+    row.appendChild(face); row.appendChild(bub);
+    log.appendChild(row);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+function sendChat(){
+  const input = $('chat-input');
+  const text = input.value.trim().slice(0, 120);
+  input.value = '';
+  if (!text || G.mode !== 'party') return;
+  addChat({id: Trystero.selfId, n: P.name, e: P.emoji, t: text, me: true});
+  if (G.net) G.net.A.chat.send({t: text, n: P.name, e: P.emoji});
+  input.focus();
+}
+$('chat-send').addEventListener('click', sendChat);
+$('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+// the on-screen keyboard covers the panel on a phone — keep it in view
+$('chat-input').addEventListener('focus', () => {
+  setTimeout(() => $('chat-panel').scrollIntoView({block:'end', behavior:'smooth'}), 320);
+});
+
 /* ---------------- lobby ---------------- */
 let pendingRoom = null;
 function hostParty(){ connect(makeCode(), true); }
@@ -773,6 +839,7 @@ function openLobby(){
   renderSettings();
   renderLobbyPlayers();
   renderLobbyCtas();
+  mountChat('lobby-chat-slot');
   show('lobby');
 }
 function renderRoomCode(){
@@ -1166,30 +1233,38 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 function drawPath(){
   const g = geom();
   pathSvg.setAttribute('viewBox', '0 0 ' + g.r.width + ' ' + g.r.height);
+  pathSvg.classList.toggle('ok', G.selOk);
   pathSvg.replaceChildren();
   if (!G.path.length) return;
   const pts = G.path.map(i => { const c = cellCentre(i, g); return c.x + ',' + c.y; }).join(' ');
   const line = document.createElementNS(SVG_NS, 'polyline');
   line.setAttribute('points', pts);
   line.setAttribute('fill','none');
-  line.setAttribute('stroke','#FF2E63');
+  line.setAttribute('stroke', G.selOk ? '#0E9E55' : '#FF2E63');  // green once it spells a real word
   line.setAttribute('stroke-width', g.size*.17);
   line.setAttribute('stroke-linecap','round');
   line.setAttribute('stroke-linejoin','round');
   pathSvg.appendChild(line);
 }
 function clearSel(){
-  tileEls.forEach(t => t.classList.remove('sel'));
+  G.selOk = false;
+  tileEls.forEach(t => t.classList.remove('sel','ok'));
   drawPath();
 }
 function setSel(){
-  tileEls.forEach((t,i) => t.classList.toggle('sel', G.path.includes(i)));
+  // Decide whether the trace already spells something BEFORE painting, so the
+  // dice and the line turn green together the instant it does.
+  const w = wordFromPath(), lw = w.toLowerCase();
+  const isValid = !!w && lw.length >= G.cfg.m && DICT.has(lw) && !G.found.has(lw);
+  G.selOk = isValid;
+  tileEls.forEach((t,i) => {
+    const on = G.path.includes(i);
+    t.classList.toggle('sel', on);
+    t.classList.toggle('ok', on && isValid);
+  });
   drawPath();
-  const w = wordFromPath();
   if (!w){ pill.className = 'word-pill'; pill.textContent = ' '; return; }
   pill.textContent = w;
-  const lw = w.toLowerCase();
-  const isValid = lw.length >= G.cfg.m && DICT.has(lw) && !G.found.has(lw);
   pill.className = 'word-pill building' + (isValid ? ' valid' : '');
 }
 function addToPath(i){
@@ -1268,7 +1343,7 @@ function submitPath(){
   flashPill('good', w + '  +' + pts);
   snd.good(); buzz(24);
   tiles.forEach(i => { tileEls[i].classList.add('flash-good'); setTimeout(() => tileEls[i].classList.remove('flash-good'), 380); });
-  floatPop(tiles[tiles.length-1], '+' + pts);
+  popWord(w, pts, tiles);
   $('found-empty').style.display = 'none';
   const chip = el('span','fchip', w); chip.appendChild(el('b','','+'+pts));
   $('found-row').prepend(chip);
@@ -1282,13 +1357,29 @@ function flashPill(cls, text){
   clearTimeout(flashPill.t);
   flashPill.t = setTimeout(() => { if (!G.path.length){ pill.className = 'word-pill'; pill.textContent = ' '; } }, 900);
 }
-function floatPop(tileIdx, text){
+/* The word you just spelled lifts straight off the dice it was traced on: the
+   letters pop out one at a time as green tiles, the whole word floats up and
+   fades. Sits over the middle of the traced letters so it reads as coming out
+   of your own swipe, and never over the tray edge on a phone. */
+function popWord(word, pts, tiles){
   const g = geom();
-  const d = el('div','float-pop', text);
-  d.style.left = cellCentre(tileIdx, g).x + 'px';
-  d.style.top = (Math.floor(tileIdx/G.n) * g.pitch) + 'px';
-  boardEl.appendChild(d);
-  setTimeout(() => d.remove(), 850);
+  // as big as the board can hold: even ANACONDAS has to sit inside the tray
+  const room = g.r.width * .96 - 58 - (word.length - 1) * 4;   // minus the +pts badge and the gaps
+  const size = Math.max(12, Math.min(30, Math.floor(room / (word.length * 1.55))));
+  const pop = el('div','pop-word');
+  pop.style.setProperty('--pw', size + 'px');
+  const cy = tiles.reduce((s,i) => s + Math.floor(i / G.n), 0) / tiles.length;
+  pop.style.top = ((cy + .5) * g.pitch) + 'px';
+  [...word.toUpperCase()].forEach((ch, i) => {
+    const t = el('i','', ch);
+    t.style.animationDelay = (i * 45) + 'ms';
+    pop.appendChild(t);
+  });
+  const badge = el('b','','+' + pts);
+  badge.style.animationDelay = (word.length * 45) + 'ms';
+  pop.appendChild(badge);
+  boardEl.appendChild(pop);
+  setTimeout(() => pop.remove(), 1200);
 }
 $('btn-finish').addEventListener('click', () => { if (G.playing && G.mode !== 'party') roundOver(false); });
 window.__end = () => G.playing && roundOver(false);
@@ -1634,6 +1725,25 @@ function runReveal(done){
       );
     });
   }
+  /* The word flies out of the bubble of whoever found it, so you can see at a
+     glance whose word it was before you read a single name. A Web Animation,
+     not an inline transform — a throttled rAF never fires the cleanup and the
+     card would stay parked on top of someone's avatar. Replaces the card's own
+     CSS pop, which would otherwise fight it for the transform. */
+  function launchFromFinder(card, finderId){
+    const b = bubbles.get(finderId);
+    if (reduced || !b || !card.animate) return;
+    const from = b.face.getBoundingClientRect(), to = card.getBoundingClientRect();
+    if (!to.width) return;
+    const dx = (from.left + from.width/2) - (to.left + to.width/2);
+    const dy = (from.top + from.height/2) - (to.top + to.height/2);
+    card.style.animation = 'none';
+    card.animate(
+      [{transform: 'translate(' + dx + 'px,' + dy + 'px) scale(.16)', opacity: .25},
+       {transform: 'none', opacity: 1}],
+      {duration: 540, easing: 'cubic-bezier(.2,1.12,.35,1)'}
+    );
+  }
   function showWord(e2){
     stage.replaceChildren();
     const card = el('div','rv-word' + (e2.unique ? ' unique' : ''));
@@ -1662,6 +1772,7 @@ function runReveal(done){
     if (e2.unique) card.appendChild(el('div','rv-x2','UNIQUE — DOUBLE POINTS!'));
     else if (e2.finders.length > 1) card.appendChild(el('div','rv-shared', e2.finders.length + ' of you found it'));
     stage.appendChild(card);
+    launchFromFinder(card, e2.finders[0]);
     const lc = el('span','rv-logchip' + (e2.unique ? ' u' : ''), word);
     log.appendChild(lc);
     log.scrollLeft = log.scrollWidth;
@@ -1867,6 +1978,7 @@ function renderPodium(){
   $('podium-wait').textContent = last
     ? 'Waiting for the host…'
     : 'Waiting for the host to start round ' + (G.round+2) + '…';
+  mountChat('podium-chat-slot');   // the bit where everyone talks trash
 }
 
 /* ---------------- confetti ---------------- */

@@ -274,9 +274,33 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .tile.sel{background:var(--gold);box-shadow:inset 0 -5px 0 var(--gold-edge),0 0 16px rgba(255,217,60,.7);transform:scale(1.08);z-index:2}
 .tile.flash-good{background:var(--green);box-shadow:inset 0 -5px 0 var(--green-edge)}
 .tile.flash-good span{color:#fff}
-.path-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;opacity:.65}
-.float-pop{position:absolute;z-index:5;font-family:var(--display);font-weight:800;font-size:26px;color:#fff;pointer-events:none;
-  text-shadow:0 2px 0 rgba(30,42,94,.8);animation:floatpop .8s ease forwards}
+/* The moment the traced letters spell something real they turn green under your
+   finger — the same live "this one counts" tell Boggle Party gives you. */
+.tile.sel.ok{background:linear-gradient(180deg,#7CEFAB,#31D97A);
+  box-shadow:inset 0 -5px 0 #12A055,0 0 20px rgba(49,217,122,.75);transform:scale(1.1)}
+.tile.sel.ok span{color:#fff;text-shadow:0 2px 0 rgba(9,90,48,.4)}
+/* …and when you let go, the word lifts off the dice and floats away, spelling
+   itself out a letter at a time on the way up. */
+.pop-word{position:absolute;left:50%;top:50%;translate:-50% -50%;z-index:6;display:flex;align-items:center;gap:4px;
+  pointer-events:none;animation:popword 1.05s cubic-bezier(.25,.9,.35,1) forwards}
+@keyframes popword{
+  0%{transform:scale(.86);opacity:1}
+  16%{transform:scale(1.07)}
+  55%{transform:scale(1) translateY(-14%);opacity:1}
+  100%{transform:scale(.72) translateY(-108%);opacity:0}}
+.pop-word i{width:calc(var(--pw,26px)*1.55);height:calc(var(--pw,26px)*1.55);border-radius:24%;display:grid;place-items:center;
+  font-style:normal;font-family:var(--display);font-weight:800;font-size:var(--pw,26px);line-height:1;color:#fff;
+  background:linear-gradient(180deg,#7CEFAB,#31D97A);box-shadow:0 4px 0 #12A055,0 8px 18px rgba(9,90,48,.35);
+  animation:poptile .32s cubic-bezier(.2,1.7,.4,1) backwards}
+@keyframes poptile{from{transform:translateY(16px) scale(.3) rotate(-12deg);opacity:0}}
+.pop-word b{margin-left:5px;font-family:var(--display);font-weight:800;font-size:calc(var(--pw,26px)*.8);color:var(--navy);
+  background:var(--gold);border-radius:999px;padding:4px 10px;box-shadow:0 3px 0 var(--gold-edge);
+  animation:poptile .32s cubic-bezier(.2,1.7,.4,1) backwards}
+.path-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;opacity:.65;transition:opacity .12s}
+/* Once the dice themselves go green the trail has done its job — fade it back
+   so it stops veiling the white letters underneath. */
+.path-svg.ok{opacity:.34}
+/* the floatpop keyframe is still the reveal bubbles' score pop (.bub-pop) */
 @keyframes floatpop{0%{transform:translate(-50%,0) scale(.6);opacity:0}20%{opacity:1;transform:translate(-50%,-10px) scale(1.15)}100%{transform:translate(-50%,-52px) scale(1);opacity:0}}
 .found-strip{min-height:56px}
 .found-head{display:flex;justify-content:space-between;align-items:baseline;padding:0 4px 5px}
@@ -427,6 +451,26 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 @keyframes modalin{from{transform:scale(.85);opacity:0}}
 .modal-card .h1{font-size:24px}
 .modal-sub{font-size:14px;font-weight:600;color:var(--navy-soft);margin-bottom:2px}
+/* ---------- QUICK CHAT (lobby + podium) ----------
+   One panel, moved between the two screens the same way the settings card is. */
+.chat-panel{display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.2);
+  border:2px solid rgba(255,255,255,.45);border-radius:20px;padding:10px;margin-top:10px}
+.chat-log{display:flex;flex-direction:column;gap:6px;max-height:136px;overflow-y:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.chat-log::-webkit-scrollbar{display:none}
+.chat-empty{text-align:center;color:#fff;font-weight:600;font-size:12.5px;opacity:.85;padding:5px 0;text-shadow:0 1px 0 rgba(150,15,72,.3)}
+.chat-msg{display:flex;align-items:flex-end;gap:6px;animation:blobin .3s cubic-bezier(.2,1.6,.4,1)}
+.chat-msg .face{flex:0 0 auto;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:15px;border:2px solid var(--c,#3B82F6)}
+.chat-bubble{max-width:78%;background:var(--white);border-radius:15px;padding:6px 11px;box-shadow:0 3px 0 rgba(30,42,94,.18)}
+.chat-bubble b{display:block;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--navy-soft)}
+.chat-bubble span{display:block;font-size:14px;font-weight:600;line-height:1.3;color:var(--navy);overflow-wrap:anywhere}
+.chat-msg.me{flex-direction:row-reverse}
+.chat-msg.me .chat-bubble{background:var(--gold)}
+.chat-row{display:flex;gap:8px}
+.chat-input{flex:1;min-width:0;background:var(--white);border:0;border-radius:999px;padding:11px 15px;
+  font-family:var(--body);font-weight:600;font-size:15px;color:var(--navy);box-shadow:0 3px 0 rgba(30,42,94,.18)}
+.chat-input::placeholder{color:#BEB7A5}
+.chat-send{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:15px;color:#fff;background:var(--green);
+  border-radius:999px;padding:11px 17px;box-shadow:0 3px 0 var(--green-edge)}
 .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);z-index:60;background:var(--navy);color:#fff;
   font-weight:600;font-size:14px;border-radius:999px;padding:11px 20px;box-shadow:0 10px 26px rgba(0,0,0,.3);opacity:0;transition:transform .3s ease,opacity .3s ease;max-width:88vw;text-align:center}
 .toast.show{transform:translate(-50%,0);opacity:1}
@@ -531,6 +575,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     <div class="lobby-cta">
       <button class="btn gold big" id="btn-start">Start the game!</button>
     </div>
+    <div id="lobby-chat-slot"></div>
   </section>
 
   <!-- ============ GAME ============ -->
@@ -604,6 +649,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
       <button class="btn gold big" id="btn-again" hidden>Play again — same crew!</button>
       <div class="lobby-wait" id="podium-wait" hidden>Waiting for the host…</div>
       <button class="chip-btn" id="btn-podium-home" style="align-self:center">Back to menu</button>
+    </div>
+    <!-- the chat panel lands here after a game — see mountChat() -->
+    <div id="podium-chat-slot">
+      <div class="chat-panel" id="chat-panel" hidden>
+        <div class="chat-log" id="chat-log"><div class="chat-empty" id="chat-empty">Say something to the party! 👋</div></div>
+        <div class="chat-row">
+          <input id="chat-input" class="chat-input" maxlength="120" placeholder="Type a message…" autocomplete="off" spellcheck="false" aria-label="Chat message">
+          <button class="chat-send" id="chat-send">Send</button>
+        </div>
+      </div>
     </div>
   </section>
 
