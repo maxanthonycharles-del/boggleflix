@@ -682,7 +682,7 @@ function connect(code, asHost){
   G.peers = new Map(); G.finsSelf = {}; G.round = 0; G.seeds = [];
   G.spectating = false; G.seq = 0;
   G.pendingStart = null; G.pendingNext = null; G.pendingAgain = false;
-  G.chat = []; renderChat();   // a new party starts with an empty chat
+  G.chat = []; chatDrawn = 0; renderChat();   // a new party starts with an empty chat
   lobbySig = null;  // new room — force the roster to rebuild
   if (asHost) G.cfg = store.get('cfg', {g:4, t:180, m:3, r:3});
 
@@ -915,24 +915,38 @@ function addChat(m){
   renderChat();
   if (!m.me && !G.playing) snd.tick(5);
 }
+/* Append-only: rebuilding the whole log on every incoming message restarted the
+   pop-in animation on every bubble already on screen, so the entire chat
+   flashed each time anyone said anything. */
+let chatDrawn = 0;
+function chatBubble(m){
+  const row = el('div','chat-msg' + (m.me ? ' me' : ''));
+  const face = el('span','face', m.e);
+  face.style.setProperty('--c', colorOf(m.id));
+  const bub = el('div','chat-bubble');
+  bub.appendChild(el('b','', m.me ? 'you' : m.n));
+  bub.appendChild(el('span','', m.t));
+  row.appendChild(face); row.appendChild(bub);
+  return row;
+}
 function renderChat(){
   const log = $('chat-log');
   if (!log) return;
-  log.replaceChildren();
   if (!G.chat.length){
-    log.appendChild(el('div','chat-empty','Say something to the party! 👋'));
+    log.replaceChildren(el('div','chat-empty','Say something to the party! 👋'));
+    chatDrawn = 0;
     return;
   }
-  for (const m of G.chat){
-    const row = el('div','chat-msg' + (m.me ? ' me' : ''));
-    const face = el('span','face', m.e);
-    face.style.setProperty('--c', colorOf(m.id));
-    const bub = el('div','chat-bubble');
-    bub.appendChild(el('b','', m.me ? 'you' : m.n));
-    bub.appendChild(el('span','', m.t));
-    row.appendChild(face); row.appendChild(bub);
-    log.appendChild(row);
+  // The log is append-only until it hits its cap and shifts; anything other than
+  // "n new messages on the end" means start over.
+  const drawn = log.querySelectorAll('.chat-msg').length;
+  if (drawn !== chatDrawn || drawn > G.chat.length){
+    log.replaceChildren();
+    G.chat.forEach(m => log.appendChild(chatBubble(m)));
+  } else {
+    for (let i = drawn; i < G.chat.length; i++) log.appendChild(chatBubble(G.chat[i]));
   }
+  chatDrawn = log.querySelectorAll('.chat-msg').length;
   log.scrollTop = log.scrollHeight;
 }
 function sendChat(){
