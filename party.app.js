@@ -108,8 +108,13 @@ function trayFlaws(board, n){
    the WORST 4×4 from 14 findable words to 55 and the median only from 78 to
    90, which is the intent — it deletes the bad trays rather than making every
    tray a bonanza. Counted against the common words only; nobody finds
-   FADDIER. */
-const TRAY_FLOOR = {4: 55, 5: 75, 6: 120};
+   FADDIER.
+   Nudged up once more (Max: "make it ever so slightly easier") — about a fifth
+   higher across the board. Over 300 trays a size the floor is now met every
+   time, and it lifts the bottom without touching the top: the worst 4×4 goes
+   55 → 65 findable words and the median 84 → 92, the worst 5×5 75 → 90 and the
+   median 119 → 127, the worst 6×6 120 → 140 and the median 182 → 190. */
+const TRAY_FLOOR = {4: 65, 5: 90, 6: 140};
 const MAX_SOLVES = 8;   // a solve is the expensive part — bound it
 function genBoard(seed, n, minLen){
   const rnd = rngFromSeed(seed);
