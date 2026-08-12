@@ -133,6 +133,18 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .invite-note{text-align:center;color:#fff;font-weight:700;font-size:14px;text-shadow:0 1px 0 rgba(150,15,72,.35)}
 .invite-no{align-self:center;color:#fff;font-weight:600;font-size:12.5px;opacity:.85;text-decoration:underline;text-underline-offset:3px;padding:3px 8px}
 .cta-note{text-align:center;color:#fff;font-size:14px;font-weight:600;text-shadow:0 1px 0 rgba(150,15,72,.3);margin-top:-2px}
+/* Home's door to the same settings card the lobby shows — solid white so it
+   reads as a real button, not a ghost outline, and it doubles as a readout of
+   what the next game is set to. */
+.set-summary{display:flex;align-items:center;gap:11px;text-align:left;background:var(--white);border-radius:20px;
+  padding:11px 12px 11px 14px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(130,10,62,.16);transition:transform .1s ease,box-shadow .1s ease}
+.set-summary:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(30,42,94,.18),0 6px 14px rgba(130,10,62,.16)}
+.set-summary .ss-ic{font-size:24px;line-height:1}
+.set-summary .ss-body{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.set-summary .ss-body b{font-family:var(--display);font-weight:800;font-size:16px;color:var(--navy)}
+.set-summary .ss-body small{font-size:12.5px;font-weight:600;color:var(--navy-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.set-summary .ss-go{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12.5px;color:#fff;background:var(--blue);
+  border-radius:999px;padding:7px 13px;box-shadow:0 2px 0 var(--blue-edge)}
 .mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
 .mode-card{background:var(--white);border-radius:20px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(130,10,62,.16);
   padding:14px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;transition:transform .1s ease}
@@ -183,6 +195,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .seg.locked button{pointer-events:none}
 .seg.locked button.on{background:var(--navy-soft)}
 .set-warn{font-size:12.5px;font-weight:600;line-height:1.4;color:#B0104A;background:#FFE9F2;border-radius:12px;padding:9px 12px}
+/* The same card inside the settings modal: the dialog's own padding leaves it a
+   little narrower than the lobby, so the segments shed a couple of px. */
+.set-modal-card{max-width:370px}
+.set-modal-card .seg button{padding:8px 10px;min-width:41px}
+.set-note{font-size:12.5px;font-weight:600;line-height:1.4;color:#fff;text-align:center;text-shadow:0 1px 0 rgba(150,15,72,.3)}
 .lobby-cta{display:flex;flex-direction:column;gap:9px}
 
 /* ---------- GAME ---------- */
@@ -337,12 +354,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 @keyframes rayspin{to{transform:rotate(360deg)}}
 /* the quick sweep of smaller words — several at once instead of one by one */
 .rv-batch{display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 4px;animation:wordin .28s cubic-bezier(.2,1.6,.4,1)}
-.rv-batch-words{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:330px}
-.rv-bchip{display:inline-flex;align-items:baseline;gap:6px;border-radius:14px;padding:9px 14px 8px;background:var(--cream);
-  font-family:var(--display);font-weight:800;font-size:19px;color:var(--navy);
-  box-shadow:0 4px 0 var(--cream-edge),0 8px 16px rgba(130,10,62,.22);animation:rvtile .3s cubic-bezier(.2,1.6,.4,1) backwards}
-.rv-bchip b{color:#FF7A1A;font-size:14px}
-.rv-bchip.u{background:linear-gradient(180deg,#FFEE8F,#FFD93C);box-shadow:0 4px 0 var(--gold-edge),0 0 18px rgba(255,217,60,.7)}
+.rv-batch-words{display:flex;flex-wrap:wrap;gap:10px 13px;justify-content:center;max-width:340px}
+/* Every word is spelled out a die at a time — the sweep words too, not just the
+   headline ones — so the whole reveal reads the way Boggle Party's does. */
+.rv-bchip{display:inline-flex;align-items:center;gap:3px;font-family:var(--display);font-weight:800}
+.rv-bchip i{width:25px;height:25px;border-radius:24%;display:grid;place-items:center;font-style:normal;
+  font-size:15px;line-height:1;color:var(--navy);background:var(--cream);
+  box-shadow:0 3px 0 var(--cream-edge),0 6px 12px rgba(130,10,62,.22);animation:rvtile .3s cubic-bezier(.2,1.6,.4,1) backwards}
+.rv-bchip b{margin-left:4px;font-size:13px;color:#fff;background:#FF7A1A;border-radius:999px;padding:3px 8px;
+  box-shadow:0 2px 0 rgba(150,15,72,.35);animation:chipin .3s cubic-bezier(.2,1.6,.4,1) backwards}
+.rv-bchip.u i{background:linear-gradient(180deg,#FFEE8F,#FFD93C);box-shadow:0 3px 0 var(--gold-edge),0 0 14px rgba(255,217,60,.7)}
 .rv-finders{display:flex;flex-wrap:wrap;gap:7px;justify-content:center}
 .rv-finder{display:flex;align-items:center;gap:6px;background:var(--white);border-radius:999px;padding:4px 11px 4px 4px;
   box-shadow:0 3px 0 rgba(30,42,94,.18);animation:chipin .3s cubic-bezier(.2,1.6,.4,1) backwards}
@@ -460,6 +481,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
       <button class="btn blue big" id="btn-join">🔑&nbsp; Join with a code</button>
       <div class="cta-note">Up to 8 players · everyone plays on their own phone</div>
     </div>
+    <button class="set-summary" id="btn-home-settings" aria-haspopup="dialog">
+      <span class="ss-ic">⚙️</span>
+      <span class="ss-body"><b>Game settings</b><small id="home-set-sum">4×4 · 3 min · 3 rounds</small></span>
+      <span class="ss-go">CHANGE</span>
+    </button>
     <div class="mode-cards">
       <button class="mode-card" id="btn-daily">
         <span class="daily-done" id="daily-done" hidden>DONE ✓</span>
@@ -499,22 +525,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     </div>
     <div class="lobby-players" id="lobby-players"></div>
     <div class="lobby-wait" id="lobby-status">Waiting for players — share the code!</div>
-    <div class="card settings-card">
-      <h3>Round settings <small id="settings-owner">you're the host — you decide!</small></h3>
-      <div class="set-row"><label>Grid</label>
-        <div class="seg" id="seg-grid"><button data-v="4">4×4</button><button data-v="5">5×5</button><button data-v="6">6×6</button></div>
-      </div>
-      <div class="set-row"><label>Timer</label>
-        <div class="seg" id="seg-timer"><button data-v="30">30s</button><button data-v="60">60s</button><button data-v="90">90s</button><button data-v="120">2m</button><button data-v="180">3m</button></div>
-      </div>
-      <div class="set-row"><label>Min word</label>
-        <div class="seg" id="seg-min"><button data-v="3">3</button><button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6</button></div>
-      </div>
-      <div class="set-row"><label>Rounds</label>
-        <div class="seg" id="seg-rounds"><button data-v="1">1</button><button data-v="3">3</button><button data-v="5">5</button></div>
-      </div>
-      <div class="set-warn" id="set-warn" hidden></div>
-    </div>
+    <!-- #settings-card lives in the settings modal and is moved in here whenever
+         the lobby opens — one card, so home and lobby can never drift apart. -->
+    <div id="lobby-set-slot"></div>
     <div class="lobby-cta">
       <button class="btn gold big" id="btn-start">Start the game!</button>
     </div>
@@ -598,6 +611,33 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     <div class="overlay-big" id="overlay-big">3</div>
     <div class="overlay-sub" id="overlay-sub"></div>
   </div></div>
+
+  <!-- Settings, reachable from home as well as the lobby. The card itself is the
+       one the lobby borrows, so both places show and edit the same controls. -->
+  <div class="modal" id="settings-modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="modal-card set-modal-card">
+      <div id="settings-slot">
+        <div class="card settings-card" id="settings-card">
+          <h3 id="settings-title">Game settings <small id="settings-owner">you're the host — you decide!</small></h3>
+          <div class="set-row"><label>Grid</label>
+            <div class="seg" id="seg-grid"><button data-v="4">4×4</button><button data-v="5">5×5</button><button data-v="6">6×6</button></div>
+          </div>
+          <div class="set-row"><label>Timer</label>
+            <div class="seg" id="seg-timer"><button data-v="30">30s</button><button data-v="60">60s</button><button data-v="90">90s</button><button data-v="120">2m</button><button data-v="180">3m</button></div>
+          </div>
+          <div class="set-row"><label>Min word</label>
+            <div class="seg" id="seg-min"><button data-v="3">3</button><button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6</button></div>
+          </div>
+          <div class="set-row"><label>Rounds</label>
+            <div class="seg" id="seg-rounds"><button data-v="1">1</button><button data-v="3">3</button><button data-v="5">5</button></div>
+          </div>
+          <div class="set-warn" id="set-warn" hidden></div>
+        </div>
+      </div>
+      <div class="set-note">Used for parties and Solo Practice · the Daily Puzzle is the same for everyone</div>
+      <button class="btn green big" id="btn-settings-done">Done</button>
+    </div>
+  </div>
 
   <div class="modal" id="confirm-exit" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-exit-title">
     <div class="card modal-card">

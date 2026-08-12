@@ -407,6 +407,7 @@ const SCREENS = ['name','home','join','lobby','game','standings','reveal','podiu
 function show(name){
   SCREENS.forEach(s => $('scr-'+s).classList.toggle('active', s === name));
   $('confirm-exit').hidden = true; // never let a dialog outlive its screen
+  $('settings-modal').hidden = true;
   window.scrollTo(0,0);
 }
 let toastT = 0;
@@ -471,6 +472,7 @@ function refreshHome(){
   $('me-name').textContent = P.name || 'Player';
   $('me-face').textContent = P.emoji || '🦊';
   applySoundUI();
+  renderSettings();   // keeps home's ⚙️ readout honest
   // An invite link's code waits here as one obvious tap instead of joining by
   // itself — see boot(). Once used (or dismissed) the banner is gone.
   $('invite-banner').hidden = !pendingRoom;
@@ -767,6 +769,7 @@ function joinParty(code){ connect(code, false); }
 
 function openLobby(){
   renderRoomCode();
+  moveSettingsTo('lobby-set-slot');
   renderSettings();
   renderLobbyPlayers();
   renderLobbyCtas();
@@ -860,6 +863,25 @@ function renderLobbyPlayers(){
   $('lobby-status').textContent = status;
   renderLobbyCtas(); // the Start button's label counts players too
 }
+/* One settings card serves both places: it sits in the modal (home taps ⚙️) and
+   is lifted into the lobby whenever that screen opens, so the host's controls
+   and the home readout can never drift out of sync. */
+function moveSettingsTo(slotId){ $(slotId).appendChild($('settings-card')); }
+function cfgSummary(){
+  const t = G.cfg.t >= 60 ? (G.cfg.t/60) + ' min' : G.cfg.t + 's';
+  return G.cfg.g + '×' + G.cfg.g + ' · ' + t + ' · ' + G.cfg.r + ' round' + (G.cfg.r === 1 ? '' : 's') +
+    ' · ' + G.cfg.m + '+ letters';
+}
+function openSettings(){
+  moveSettingsTo('settings-slot');
+  renderSettings();
+  $('settings-modal').hidden = false;
+  snd.tick(2);
+}
+function closeSettings(){ $('settings-modal').hidden = true; refreshHome(); }
+$('btn-home-settings').addEventListener('click', openSettings);
+$('btn-settings-done').addEventListener('click', closeSettings);
+$('settings-modal').addEventListener('click', e => { if (e.target === $('settings-modal')) closeSettings(); });
 const SEGS = [['seg-grid','g'],['seg-timer','t'],['seg-min','m'],['seg-rounds','r']];
 function renderSettings(){
   for (const [segId, key] of SEGS){
@@ -867,9 +889,10 @@ function renderSettings(){
     seg.classList.toggle('locked', G.mode === 'party' && !G.isHost);
     seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === G.cfg[key]));
   }
-  $('settings-owner').textContent = (G.mode !== 'party' || G.isHost)
-    ? "you're the host — you decide!"
-    : 'the host picks these';
+  $('settings-owner').textContent = G.mode !== 'party'
+    ? 'for your parties & solo games'
+    : (G.isHost ? "you're the host — you decide!" : 'the host picks these');
+  $('home-set-sum').textContent = cfgSummary();
   // A 4×4 board frequently holds no 6-letter word at all — roughly one board in
   // four is unwinnable, which is a miserable round to sit through.
   const thin = G.cfg.g === 4 && G.cfg.m === 6;
@@ -1281,7 +1304,11 @@ $('btn-game-exit').addEventListener('click', () => {
 $('btn-exit-stay').addEventListener('click', closeExitConfirm);
 $('btn-exit-go').addEventListener('click', () => { closeExitConfirm(); quitToHome(); });
 $('confirm-exit').addEventListener('click', e => { if (e.target === $('confirm-exit')) closeExitConfirm(); });
-window.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('confirm-exit').hidden) closeExitConfirm(); });
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('confirm-exit').hidden) closeExitConfirm();
+  else if (!$('settings-modal').hidden) closeSettings();
+});
 
 /* live rivals rail */
 function renderRivals(){
@@ -1614,9 +1641,10 @@ function runReveal(done){
     const tiles = el('div','rv-tiles');
     // letter tiles sized so even ANACONDAS fits a phone screen
     tiles.style.setProperty('--ts', Math.max(14, Math.min(32, Math.floor((Math.min(innerWidth, 520) - 80) / word.length * .58))) + 'px');
+    // one die at a time, slow enough to actually watch the word being spelled
     [...word].forEach((ch, i) => {
       const s = el('span','', ch);
-      s.style.animationDelay = (i * 35) + 'ms';
+      s.style.animationDelay = (i * 85) + 'ms';
       tiles.appendChild(s);
     });
     card.appendChild(tiles);
@@ -1624,7 +1652,7 @@ function runReveal(done){
     e2.finders.forEach((id, i) => {
       const r = rows.find(x => x.id === id);
       const chip = el('span','rv-finder');
-      chip.style.animationDelay = (120 + i * 60) + 'ms';
+      chip.style.animationDelay = (word.length * 85 + 120 + i * 60) + 'ms';  // after the last die lands
       const face = el('span','face', r ? r.p.emoji : '🙂'); face.style.setProperty('--c', colorOf(id));
       chip.appendChild(face);
       chip.appendChild(el('b','','+' + e2.pts));
@@ -1638,16 +1666,26 @@ function runReveal(done){
     log.appendChild(lc);
     log.scrollLeft = log.scrollWidth;
   }
-  // The small change: several words at once, chips popping in together. Keeps a
+  // The small change: several words at once. They still spell themselves out a
+  // letter at a time — the words just overlap instead of queueing, which keeps a
   // 40-word round from taking half a minute to read out one word at a time.
   function showBatch(list, unique){
     stage.replaceChildren();
     const card = el('div','rv-batch' + (unique ? ' unique' : ''));
     const grid = el('div','rv-batch-words');
     list.forEach((e2, i) => {
-      const chip = el('span','rv-bchip' + (unique ? ' u' : ''), e2.w.toUpperCase());
-      chip.appendChild(el('b','','+' + e2.pts));
-      chip.style.animationDelay = (i * 45) + 'ms';
+      const chip = el('span','rv-bchip' + (unique ? ' u' : ''));
+      const word = e2.w.toUpperCase();
+      // ripple across the card: the words overlap, the letters inside don't —
+      // the whole card must finish spelling itself inside one SWEEP.
+      [...word].forEach((ch, j) => {
+        const tile = el('i','', ch);
+        tile.style.animationDelay = (i * 38 + j * 20) + 'ms';
+        chip.appendChild(tile);
+      });
+      const pts = el('b','','+' + e2.pts);
+      pts.style.animationDelay = (i * 38 + word.length * 20) + 'ms';
+      chip.appendChild(pts);
       grid.appendChild(chip);
     });
     card.appendChild(grid);
@@ -1680,10 +1718,12 @@ function runReveal(done){
      directions at once: a big haul squeezed each word down to ~half a second
      (gone before you can read it) while the sequence still dragged past twenty
      seconds. So only the headline words take the centre stage, each held long
-     enough to actually read, and the small change sweeps past in batches. */
+     enough to actually read, and the small change sweeps past in batches.
+     Slowed by half again on 2026-08-12 (Max: "way too fast") — a word now has
+     time to spell itself out die by die before the next one takes the stage. */
   const SPOTLIGHT = 4;   // words per phase that get the full treatment
-  const DWELL = 900, DWELL_UNIQUE = 1050, SWEEP = 430;
-  let t = 700, tickN = 0;
+  const DWELL = 1350, DWELL_UNIQUE = 1600, SWEEP = 650;
+  let t = 1050, tickN = 0;
 
   function stagePhase(list, unique, t0){
     let t = t0;
@@ -1693,7 +1733,7 @@ function runReveal(done){
     const rest = byPts.slice(spotN);
     const spotlight = byPts.slice(0, spotN).reverse();  // ascending: builds to the biggest
     if (rest.length){
-      const batches = Math.min(4, Math.ceil(rest.length / 6));
+      const batches = Math.min(6, Math.ceil(rest.length / 6));
       const per = Math.ceil(rest.length / batches);
       for (let b = 0; b < batches; b++){
         const chunk = rest.slice(b * per, (b + 1) * per);
@@ -1706,7 +1746,7 @@ function runReveal(done){
         });
         t += SWEEP;
       }
-      t += 260;
+      t += 390;
     }
     spotlight.forEach(e2 => {
       at(t, () => {
@@ -1722,20 +1762,20 @@ function runReveal(done){
 
   if (shared.length){
     at(t, () => setPhase('🤝 WORDS YOU SHARED', 'everyone who found it scores!'));
-    t = stagePhase(shared, false, t + 800) + 300;
+    t = stagePhase(shared, false, t + 1200) + 450;
   }
   if (uniq.length){
     at(t, () => { stage.replaceChildren(); setPhase('✨ UNIQUE WORDS', 'nobody else found these — DOUBLE points!'); snd.spark(); });
-    t = stagePhase(uniq, true, t + 1100);
+    t = stagePhase(uniq, true, t + 1650);
   }
-  t += 300;
+  t += 450;
   at(t, () => {
     stage.replaceChildren(); snapTotals();
     setPhase(last ? '🏆 AND THE WINNER IS…' : '📈 WHO’S AHEAD?',
              last ? '' : 'after round ' + (G.round+1) + ' of ' + G.cfg.r);
     snd.up();
   });
-  at(t + 1400, done);
+  at(t + 2100, done);
 }
 
 function renderPodium(){
