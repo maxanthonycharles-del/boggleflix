@@ -21,6 +21,9 @@ function fmtTime(ms){
   const s = Math.max(0, Math.ceil(ms/1000));
   return s >= 60 ? Math.floor(s/60) + ':' + String(s%60).padStart(2,'0') : String(s);
 }
+/* Today's tray for a given grid size, and where that size's best score lives. */
+function dailySeed(g){ return 'bfp-daily-' + todayKey() + (g === 4 ? '' : '-' + g); }
+function dailyKey(g){ return 'daily-' + todayKey() + (g === 4 ? '' : '-' + g); }
 function todayKey(){
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
@@ -606,7 +609,7 @@ function refreshHome(){
     document.querySelector('#invite-banner .invite-note').textContent =
       pendingIsRejoin ? 'You were in a party — jump back in!' : 'Someone invited you to their party!';
   }
-  const daily = store.get('daily-' + todayKey(), null);
+  const daily = store.get(dailyKey(sanitizeCfg(store.get('cfg', {g:4})).g), null);
   $('daily-done').hidden = daily === null;
   if (daily !== null) $('daily-done').textContent = daily + ' PTS ✓';
   const r = record();
@@ -717,7 +720,7 @@ function saveRecord(r){ store.set('record', r); }
    claimed seventeen games. One counter now, and it is this one. */
 function gameKey(){
   if (G.mode === 'party') return G.gameId;
-  if (G.mode === 'daily') return 'daily-' + todayKey();   // once a day, however often you replay it
+  if (G.mode === 'daily') return dailyKey(G.cfg.g);   // once a day per size, however often you replay it
   return G.seeds && G.seeds[0];
 }
 function alreadyCounted(key){
@@ -1491,8 +1494,14 @@ function startLocal(mode){
   leaveNet();
   G.mode = mode; G.code = null; G.isHost = true; G.peers = new Map(); G.finsSelf = {};
   if (mode === 'daily'){
-    G.cfg = {g:4, t:180, m:3, r:1};
-    G.seeds = ['bfp-daily-' + todayKey()];
+    /* The daily used to ignore the settings entirely, so picking 5×5 still
+       dealt a 4×4 — the settings simply didn't apply here. They do now, and the
+       board stays shared by keying the seed to the DATE AND THE SIZE: everyone
+       playing today on the same grid gets the same tray, which is what makes
+       comparing scores mean anything. One round, always. */
+    G.cfg = sanitizeCfg(store.get('cfg', {g:4, t:180, m:3, r:1}));
+    G.cfg.r = 1;
+    G.seeds = [dailySeed(G.cfg.g)];
   } else {
     G.cfg = sanitizeCfg(store.get('cfg', {g:4, t:180, m:3, r:1}));
     G.cfg.r = 1;
@@ -1923,7 +1932,7 @@ function roundOver(wasSpectating){
     if (G.score > store.get('best',0)) store.set('best', G.score);
     creditRound(fin);
     if (G.mode === 'daily'){
-      const k = 'daily-' + todayKey();
+      const k = dailyKey(G.cfg.g);
       if (G.score > (store.get(k, -1))) store.set(k, G.score);
     }
     if (G.net) G.net.A.fin.send({...fin, gid: G.gameId});
@@ -2120,7 +2129,7 @@ function renderLocalResults(){
   $('btn-stand-again').hidden = G.mode !== 'solo';
 }
 $('btn-share-daily').addEventListener('click', async () => {
-  const text = '📅 Boggleflix Daily ' + prettyToday() + ' — ' + G.score + ' pts, ' + G.found.size + ' words! Beat me: ' + location.origin + location.pathname;
+  const text = '📅 Boggleflix Daily ' + prettyToday() + ' (' + G.cfg.g + '×' + G.cfg.g + ') — ' + G.score + ' pts, ' + G.found.size + ' words! Beat me: ' + location.origin + location.pathname;
   try { if (navigator.share){ await navigator.share({text}); return; } } catch(e){ if (e && e.name==='AbortError') return; }
   copyText(text, 'Score copied — paste it in the family chat!');
 });
