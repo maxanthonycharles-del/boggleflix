@@ -239,7 +239,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .lobby-cta{display:flex;flex-direction:column;gap:9px}
 
 /* ---------- GAME ---------- */
-#scr-game{padding:10px 12px calc(8px + env(safe-area-inset-bottom));height:100vh;height:100dvh;overflow:hidden;gap:7px}
+/* Nothing on this screen scrolls: a drag that misses the board used to slide
+   the whole page (and rubber-band on iOS) mid-round. The two horizontal strips
+   are the only exceptions. */
+#scr-game{padding:10px 12px calc(8px + env(safe-area-inset-bottom));height:100vh;height:100dvh;overflow:hidden;gap:7px;
+  touch-action:none;overscroll-behavior:none}
+#scr-game .rivals,#scr-game .found-row{touch-action:pan-x}
 /* Final 10 seconds: a deep-crimson vignette pulses in from the screen edges
    once a second so the whole board feels the countdown, not just the timer bar.
    Dark red (not pink) so it reads as urgency against the pink game background
@@ -635,6 +640,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
     </div>
     <div class="card hof-card">
       <div class="hof-row"><span>🥇 Win rate</span><b id="hof-rate">—</b></div>
+      <div class="hof-row"><span>🎉 Party games</span><b id="hof-partygames">0</b></div>
       <div class="hof-row"><span>🏅 Podium finishes</span><b id="hof-podiums">0</b></div>
       <div class="hof-row"><span>📚 Words found</span><b id="hof-words">0</b></div>
       <div class="hof-row"><span>⭐ Best word</span><b id="hof-bw">—</b></div>

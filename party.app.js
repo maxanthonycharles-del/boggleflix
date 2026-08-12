@@ -407,6 +407,17 @@ document.addEventListener('click', function unlockAudio(){
 // "In a round" = the game screen is up and I'm actually playing in it —
 // spectators watching mid-round get silence too.
 function inRound(){ return $('scr-game').classList.contains('active') && !G.spectating; }
+/* touch-action is not enough on iOS: the document still pans and bounces. While
+   the game screen is up, refuse any touch-move that isn't inside one of the two
+   horizontal strips. The board's own tracing uses pointer events, so this
+   doesn't touch it. */
+document.addEventListener('touchmove', e => {
+  if (!$('scr-game').classList.contains('active')) return;
+  const t = e.target;
+  if (t && t.closest && t.closest('.rivals, .found-row, .chat-log, .modal')) return;
+  e.preventDefault();
+}, {passive: false});
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden){ Music.stop(); return; }
   /* Coming back from a sleep, every peer looks silent for as long as we were
@@ -602,9 +613,8 @@ function refreshHome(){
   $('hof-line').textContent = r.games
     ? r.wins + ' win' + (r.wins === 1 ? '' : 's') + ' · ' + r.games + ' game' + (r.games === 1 ? '' : 's') + ' · best round ' + r.pb
     : 'your wins, your best ever';
-  const best = store.get('best', 0), games = store.get('games', 0);
-  $('home-stats').textContent = games
-    ? `Best round: ${best} pts · ${games} game${games===1?'':'s'} played`
+  $('home-stats').textContent = r.games
+    ? `Best round: ${r.pb} pts · ${r.games} game${r.games === 1 ? '' : 's'} played`
     : 'Find words. Longer = more points!';
 }
 $('btn-sound').addEventListener('click', toggleSound);
@@ -630,7 +640,8 @@ function renderHallOfFame(){
   $('hof-games').textContent = r.games;
   $('hof-pb').textContent = r.pb;
   $('hof-pbgame').textContent = r.pbGame;
-  $('hof-rate').textContent = r.games ? Math.round(r.wins / r.games * 100) + '%' : '—';
+  $('hof-rate').textContent = r.party ? Math.round(r.wins / r.party * 100) + '%' : '—';
+  $('hof-partygames').textContent = r.party;
   $('hof-podiums').textContent = r.podiums;
   $('hof-words').textContent = r.words;
   $('hof-bw').textContent = r.bw ? r.bw.toUpperCase() + ' (' + r.bwp + ')' : '—';
@@ -695,35 +706,77 @@ function makeCode(){
    server) and gossiped with the roster, so a party can also see everyone's
    lifetime record next to each other.
    ================================================================ */
-const REC0 = {wins: 0, games: 0, pb: 0, pbGame: 0, bw: '', bwp: 0, words: 0, podiums: 0};
+const REC0 = {wins: 0, games: 0, party: 0, pb: 0, pbGame: 0, bw: '', bwp: 0, words: 0, podiums: 0};
 function record(){ return Object.assign({}, REC0, store.get('record', {})); }
 function saveRecord(r){ store.set('record', r); }
 /* One game is counted once, and only when it truly ends: keyed on the game id so
    a re-render, a rejoin, or a second phone's late report can't inflate it. */
+/* Every finished game counts — solo and the daily as well as parties. It used
+   to bank party games only, so a phone that mostly played solo showed a record
+   of almost nothing while the home screen (reading a different, older counter)
+   claimed seventeen games. One counter now, and it is this one. */
+function gameKey(){
+  if (G.mode === 'party') return G.gameId;
+  if (G.mode === 'daily') return 'daily-' + todayKey();   // once a day, however often you replay it
+  return G.seeds && G.seeds[0];
+}
+function alreadyCounted(key){
+  const seen = store.get('counted', []);
+  return Array.isArray(seen) ? seen.includes(key) : seen === key;
+}
+function markCounted(key){
+  const seen = store.get('counted', []);
+  const list = Array.isArray(seen) ? seen : (seen ? [seen] : []);
+  list.push(key);
+  store.set('counted', list.slice(-30));   // enough to outlive an evening
+}
 function creditGame(rows){
-  if (G.mode !== 'party' || !G.gameId) return;
-  if (store.get('counted', null) === G.gameId) return;
-  /* Don't bank a win off a provisional podium. The last straggler's report can
-     still reorder it, and once 'counted' is written the record can never be
-     corrected — the phone would claim a win for a game the screen says was
-     lost, and gossip that claim to the party leaderboard. Anyone with no
-     evidence of playing (a spectator) can't hold this up, and 8s after the
-     buzzer we take what we have. */
-  const rl = G.cfg.r - 1;
-  const played = activePlayers().filter(([,p]) =>
-    (p.me ? G.finsSelf[rl] : p.fin && p.fin[rl]) || (p.sc && p.sc[rl] !== undefined));
-  const reported = played.filter(([,p]) => p.me ? G.finsSelf[rl] : (p.fin && p.fin[rl]));
-  if (reported.length < played.length && Date.now() - (G.finAt || 0) < 8000) return;
-  store.set('counted', G.gameId);
+  const key = gameKey();
+  if (!key || alreadyCounted(key)) return;
+  if (G.mode === 'party'){
+    /* Don't bank a win off a provisional podium. The last straggler's report
+       can still reorder it, and once counted the record can never be corrected
+       — the phone would claim a win for a game the screen says was lost, and
+       gossip that claim to the party leaderboard. Anyone with no evidence of
+       playing (a spectator) can't hold this up, and 8s after the buzzer we take
+       what we have. */
+    const rl = G.cfg.r - 1;
+    const played = activePlayers().filter(([,p]) =>
+      (p.me ? G.finsSelf[rl] : p.fin && p.fin[rl]) || (p.sc && p.sc[rl] !== undefined));
+    const reported = played.filter(([,p]) => p.me ? G.finsSelf[rl] : (p.fin && p.fin[rl]));
+    if (reported.length < played.length && Date.now() - (G.finAt || 0) < 8000) return;
+  }
+  markCounted(key);
   const r = record();
-  const me = rows.findIndex(x => x.p.me);
   r.games++;
-  if (me === 0 && rows.length > 1) r.wins++;
-  if (me >= 0 && me < 3 && rows.length > 2) r.podiums++;
-  if (me >= 0 && rows[me].total > r.pbGame) r.pbGame = rows[me].total;
+  if (G.mode === 'party' && rows){
+    r.party++;
+    const me = rows.findIndex(x => x.p.me);
+    if (me === 0 && rows.length > 1) r.wins++;
+    if (me >= 0 && me < 3 && rows.length > 2) r.podiums++;
+    if (me >= 0 && rows[me].total > r.pbGame) r.pbGame = rows[me].total;
+  } else {
+    // solo and daily are one round against yourself — no win, but it still counts
+    let total = 0;
+    for (const rd in G.finsSelf) total += G.finsSelf[rd].s || 0;
+    if (total > r.pbGame) r.pbGame = total;
+  }
   saveRecord(r);
   renderHallOfFame();
+  refreshHome();
 }
+/* One-time repair for phones that have been playing all along: the old counter
+   tallied every game started, in any mode, and the record only knew about
+   parties. Take the larger of the two as the true total and keep the party
+   count for the win rate. */
+(function migrateRecord(){
+  if (store.get('recmigrated', false)) return;
+  const r = record(), legacy = store.get('games', 0);
+  if (!r.party && r.games) r.party = r.games;   // what "games" used to mean
+  r.games = Math.max(r.games, legacy);
+  saveRecord(r);
+  store.set('recmigrated', true);
+})();
 /* Round-level bests, from any mode. */
 function creditRound(fin){
   const r = record();
@@ -1491,7 +1544,7 @@ function beginRound(){
   if (!G.spectating) Music.start(); // the song belongs to the round only
   // One game = one seed set, so count it once — on round 1, and only if
   // actually playing (a mid-round joiner spectates this round).
-  if (G.round === 0 && !G.spectating) store.set('games', store.get('games',0) + 1);
+
 
   // background solve for results
   setTimeout(() => { if (!G.possible) G.possible = solveBoard(G.board, G.n, G.cfg.m); }, 1200);   // common words — see solveBoard
@@ -2028,6 +2081,7 @@ $('btn-podium-next').addEventListener('click', () => { if (G.isHost) hostNextRou
 
 /* local (solo/daily) results reuse the standings screen */
 function renderLocalResults(){
+  creditGame(null);   // solo and daily count towards your record too
   /* Counted over the words people actually know — the old count was every
      ENABLE word on the tray, so "you found 1 of 84" was really "1 of 84,
      seventy of which nobody has ever seen". Your own finds always count, even
