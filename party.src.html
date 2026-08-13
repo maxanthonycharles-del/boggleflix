@@ -164,6 +164,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   border-radius:999px;padding:7px 13px;box-shadow:0 2px 0 var(--blue-edge)}
 .offline-note{margin-top:2px;text-align:center;font-weight:700;font-size:12.5px;line-height:1.35;color:#fff;
   background:rgba(20,6,50,.34);border-radius:14px;padding:8px 10px}
+.offline-note b{font-weight:800;color:var(--gold)}
+/* with no signal, the mode that still works should be the one that stands out */
+body.offline .pass-chip{box-shadow:0 5px 0 var(--gold-edge),0 0 0 3px var(--gold),0 10px 24px rgba(20,30,120,.2)}
 .btn.dimmed{filter:saturate(.5) brightness(.92)}
 .mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
 .mode-card{background:var(--white);border-radius:20px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(20,30,120,.18);
@@ -698,7 +701,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
       <button class="btn gold big" id="btn-host">🎉&nbsp; Host a party</button>
       <button class="btn blue big" id="btn-join">🔑&nbsp; Join with a code</button>
       <div class="cta-note">Up to 8 players · everyone plays on their own phone</div>
-      <div class="offline-note" id="offline-note" hidden>📴 No connection — a party needs one, but Solo Practice and the Daily Puzzle work offline</div>
+      <div class="offline-note" id="offline-note" hidden>📴 No connection — use <b>Offline multiplayer</b> below. Solo Practice and the Daily Puzzle work too.</div>
     </div>
     <button class="set-summary" id="btn-home-settings" aria-haspopup="dialog">
       <span class="ss-ic">⚙️</span>

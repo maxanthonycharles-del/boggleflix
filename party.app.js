@@ -556,6 +556,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:'){
 function online(){ return navigator.onLine !== false; }
 function applyOnlineUI(){
   const off = !online();
+  document.body.classList.toggle('offline', off);
   $('offline-note').hidden = !off;
   $('btn-host').classList.toggle('dimmed', off);
   $('btn-join').classList.toggle('dimmed', off);
