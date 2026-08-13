@@ -266,7 +266,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 /* The clock is a white pill with an hourglass and the time in deep violet, the
    way Boggle Party's is — the remaining time still drains across it as a soft
    fill so you can feel it going without reading the numbers. */
-.timer-wrap{flex:1;min-width:0;max-width:150px;height:38px;background:#fff;border-radius:999px;overflow:hidden;position:relative;
+.timer-wrap{flex:1;min-width:0;max-width:190px;height:38px;background:#fff;border-radius:999px;overflow:hidden;position:relative;
   box-shadow:0 4px 0 rgba(20,6,50,.25),0 8px 18px rgba(20,30,120,.22)}
 .timer-wrap::before{content:'⏳';position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:17px;z-index:2}
 .timer-wrap.warn{animation:timerwarn .5s ease 3}
@@ -285,13 +285,24 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
    is the number anyone actually calls out mid-round. */
 .rivals{display:flex;gap:6px;justify-content:space-between;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;min-height:44px}
 .rivals::-webkit-scrollbar{display:none}
-.rival{flex:0 0 auto;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.85);border-radius:999px;padding:4px 11px 4px 4px;
-  box-shadow:0 3px 0 rgba(30,42,94,.15);transition:transform .25s ease}
-.rival .face{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:16px;background:#fff;border:3px solid var(--c,#3B82F6)}
-.rival b{font-family:var(--display);font-weight:800;font-size:17px;color:var(--navy);font-variant-numeric:tabular-nums}
-.rival b::after{content:'w';font-size:11px;font-weight:700;color:var(--navy-soft);margin-left:1px}
-.rival small{font-size:11.5px;font-weight:700;color:var(--navy-soft);max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The mid-round scoreboard: avatar, who, and how many words they have. Same
+   list on every phone, you included, leader in gold, you outlined. */
+.rival{flex:0 0 auto;display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.94);
+  border-radius:999px;padding:3px 4px 3px 3px;box-shadow:0 3px 0 rgba(20,6,50,.22);
+  transition:transform .25s ease,background .2s ease}
+.rival .face{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;font-size:15px;
+  background:#fff;border:2.5px solid var(--c,#3B82F6)}
+.rival small{font-family:var(--display);font-weight:800;font-size:12.5px;color:var(--die);
+  max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rival b{font-family:var(--display);font-weight:800;font-size:14px;color:#fff;
+  background:linear-gradient(180deg,var(--die),var(--die-2));border-radius:999px;padding:2px 7px;
+  min-width:27px;text-align:center;font-variant-numeric:tabular-nums;box-shadow:0 2px 0 var(--die-edge)}
+.rival b::after{content:'w';font-size:9.5px;opacity:.7;margin-left:1px}
+.rival b.kick{animation:rvkick .32s cubic-bezier(.2,1.7,.4,1)}
+@keyframes rvkick{40%{transform:scale(1.28)}}
 .rival.first{background:var(--gold);box-shadow:0 3px 0 var(--gold-edge)}
+.rival.me{outline:3px solid #fff;outline-offset:-1px}
+.rival.gone{opacity:.4;filter:grayscale(1)}
 .rival.gone{opacity:.4;filter:grayscale(1)}
 .word-pill-wrap{display:flex;justify-content:center;height:48px;align-items:center;position:relative;margin-top:auto}
 /* The banner over the board: "Minimum N characters!" until you start tracing,
@@ -1564,7 +1575,7 @@ const DEV = /[?#&]dev\b/.test(location.href);
    next to index.html and says what the server has right now; a few bytes,
    never cached. If it disagrees with the build baked into this page, offer the
    update — never mid-round, and never without asking. */
-const BUILD = "9361ba1e5d94";
+const BUILD = "9eb4326a24b2";
 let updateReady = null;
 async function checkForUpdate(){
   if (updateReady || G.playing) return;
@@ -2622,6 +2633,7 @@ function beginRound(){
   G.totalMs = DEV ? 25000 : G.cfg.t * 1000;
 
   renderBoard();
+  $('my-score').hidden = G.mode === 'party';   // the rail shows yours in a party
   $('round-pill').textContent = 'R' + (G.round+1) + '/' + G.cfg.r;
   $('my-score').textContent = '0';   // words, not points — see the HUD
   $('found-row').replaceChildren($('found-empty')); $('found-empty').style.display = '';
@@ -2974,26 +2986,27 @@ function renderRivals(){
   if (G.mode !== 'party'){ rail.replaceChildren(); rivalEls = new Map(); rivalSig = null; return; }
   /* Mid-round the number that matters is HOW MANY WORDS, not points — that is
      what everyone shouts across the room. Points are for the results. */
-  /* Opponents only — your own count sits in the corner of the HUD beside the
-     clock, so it isn't repeated in the rail. */
-  const rows = everyone().filter(([,p]) => !p.me).map(([id,p]) => ({
-    id, p, score: (p.sc && p.sc[G.round]) || 0, words: wordsOf(p, G.round)
+  /* EVERYONE, you included — it is the same little scoreboard on every phone,
+     so you and Scarlett both see both counts rather than only each other's. */
+  const rows = everyone().map(([id,p]) => ({
+    id, p, score: (p.me ? G.score : (p.sc && p.sc[G.round]) || 0), words: wordsOf(p, G.round)
   })).sort((a,b) => b.words - a.words || b.score - a.score);
-  const sig = rows.map(r => r.id + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
+  const sig = rows.map(r => r.id + (r.p.me?'*':'') + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
   if (sig !== rivalSig){                 // roster changed — rebuild the chips
     rivalSig = sig;
     rivalEls = new Map();
     rail.replaceChildren();
     rows.forEach(r => {
-      const d = el('div','rival');
+      // avatar, then who, then how many — read as a scoreboard row
+      const d = el('div','rival' + (r.p.me ? ' me' : ''));
       const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
       d.appendChild(face);
+      const nm = el('small','', r.p.me ? 'you' : r.p.name);
+      d.appendChild(nm);
       const b = el('b','', String(r.words));
       d.appendChild(b);
-      const nm = el('small','', r.p.name);
-      d.appendChild(nm);
       rail.appendChild(d);
-      rivalEls.set(r.id, {d, b, nm, name: r.p.name});
+      rivalEls.set(r.id, {d, b, nm, name: r.p.me ? 'you' : r.p.name});
     });
   }
   rows.forEach((r, i) => {
@@ -3003,7 +3016,11 @@ function renderRivals(){
     e.d.classList.toggle('first', i === 0 && r.words > 0);
     e.d.classList.toggle('gone', !!r.p.gone);
     const txt = String(r.words);
-    if (e.b.textContent !== txt) e.b.textContent = txt;
+    if (e.b.textContent !== txt){
+      e.b.textContent = txt;
+      // a small kick when someone's count moves, so you notice it happen
+      e.b.classList.remove('kick'); void e.b.offsetWidth; e.b.classList.add('kick');
+    }
     if (e.nm.textContent !== e.name) e.nm.textContent = e.name;
   });
 }

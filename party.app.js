@@ -1565,6 +1565,7 @@ function beginRound(){
   G.totalMs = DEV ? 25000 : G.cfg.t * 1000;
 
   renderBoard();
+  $('my-score').hidden = G.mode === 'party';   // the rail shows yours in a party
   $('round-pill').textContent = 'R' + (G.round+1) + '/' + G.cfg.r;
   $('my-score').textContent = '0';   // words, not points — see the HUD
   $('found-row').replaceChildren($('found-empty')); $('found-empty').style.display = '';
@@ -1917,26 +1918,27 @@ function renderRivals(){
   if (G.mode !== 'party'){ rail.replaceChildren(); rivalEls = new Map(); rivalSig = null; return; }
   /* Mid-round the number that matters is HOW MANY WORDS, not points — that is
      what everyone shouts across the room. Points are for the results. */
-  /* Opponents only — your own count sits in the corner of the HUD beside the
-     clock, so it isn't repeated in the rail. */
-  const rows = everyone().filter(([,p]) => !p.me).map(([id,p]) => ({
-    id, p, score: (p.sc && p.sc[G.round]) || 0, words: wordsOf(p, G.round)
+  /* EVERYONE, you included — it is the same little scoreboard on every phone,
+     so you and Scarlett both see both counts rather than only each other's. */
+  const rows = everyone().map(([id,p]) => ({
+    id, p, score: (p.me ? G.score : (p.sc && p.sc[G.round]) || 0), words: wordsOf(p, G.round)
   })).sort((a,b) => b.words - a.words || b.score - a.score);
-  const sig = rows.map(r => r.id + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
+  const sig = rows.map(r => r.id + (r.p.me?'*':'') + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
   if (sig !== rivalSig){                 // roster changed — rebuild the chips
     rivalSig = sig;
     rivalEls = new Map();
     rail.replaceChildren();
     rows.forEach(r => {
-      const d = el('div','rival');
+      // avatar, then who, then how many — read as a scoreboard row
+      const d = el('div','rival' + (r.p.me ? ' me' : ''));
       const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
       d.appendChild(face);
+      const nm = el('small','', r.p.me ? 'you' : r.p.name);
+      d.appendChild(nm);
       const b = el('b','', String(r.words));
       d.appendChild(b);
-      const nm = el('small','', r.p.name);
-      d.appendChild(nm);
       rail.appendChild(d);
-      rivalEls.set(r.id, {d, b, nm, name: r.p.name});
+      rivalEls.set(r.id, {d, b, nm, name: r.p.me ? 'you' : r.p.name});
     });
   }
   rows.forEach((r, i) => {
@@ -1946,7 +1948,11 @@ function renderRivals(){
     e.d.classList.toggle('first', i === 0 && r.words > 0);
     e.d.classList.toggle('gone', !!r.p.gone);
     const txt = String(r.words);
-    if (e.b.textContent !== txt) e.b.textContent = txt;
+    if (e.b.textContent !== txt){
+      e.b.textContent = txt;
+      // a small kick when someone's count moves, so you notice it happen
+      e.b.classList.remove('kick'); void e.b.offsetWidth; e.b.classList.add('kick');
+    }
     if (e.nm.textContent !== e.name) e.nm.textContent = e.name;
   });
 }
