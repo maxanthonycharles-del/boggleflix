@@ -486,6 +486,8 @@ const G = {   // current game context
   lock: null,
   finTimer: 0,
   chat: [],            // party chat, newest last — lives as long as the room does
+  locals: [],          // pass & play: everyone sharing this one phone
+  turn: 0,             // …and whose go it is
   pendingStart: null,  // host moved on while we were still playing — applied at round end
   pendingNext: null,
   pendingAgain: false,
@@ -562,7 +564,7 @@ window.addEventListener('online', applyOnlineUI);
 window.addEventListener('offline', applyOnlineUI);
 
 /* ---------------- screens / toast / overlay ---------------- */
-const SCREENS = ['name','home','hof','join','lobby','game','standings','reveal','podium'];
+const SCREENS = ['name','home','hof','pass','hand','join','lobby','game','standings','reveal','podium'];
 function show(name){
   SCREENS.forEach(s => $('scr-'+s).classList.toggle('active', s === name));
   $('confirm-exit').hidden = true; // never let a dialog outlive its screen
@@ -675,6 +677,124 @@ $('btn-join').addEventListener('click', () => {
 });
 $('btn-join-back').addEventListener('click', () => show('home'));
 $('btn-solo').addEventListener('click', () => startLocal('solo'));
+/* ================================================================
+   PASS & PLAY — one phone round the table, no signal needed.
+   Everyone plays the SAME board in turn (which is how Boggle works anyway),
+   then the usual reveal and podium compare them. The local players stand in
+   for network peers, so every results screen works unchanged.
+   ================================================================ */
+function passCrew(){ return store.get('crew', null); }
+function newLocal(i, name, emoji){
+  return {id: 'L' + i, name: name || ('Player ' + (i+1)), emoji: emoji || AVATARS[i % AVATARS.length],
+          joinedAt: i, host: false, gone: false, me: false, sc: {}, wc: {}, fin: {}};
+}
+function openPass(){
+  const saved = passCrew();
+  G.locals = (saved && saved.length >= 2 ? saved : [null, null]).map((p, i) => newLocal(i, p && p.n, p && p.e));
+  moveSettingsTo('pass-set-slot');
+  renderSettings();
+  renderPassList();
+  show('pass');
+}
+function renderPassList(){
+  const list = $('pass-list'); list.replaceChildren();
+  G.locals.forEach((p, i) => {
+    const row = el('div','pass-row');
+    // tap the face to cycle through the animals
+    const pick = el('button','pick', p.emoji);
+    pick.style.setProperty('--c', COLORS[i % COLORS.length]);
+    pick.addEventListener('click', () => {
+      const at = AVATARS.indexOf(p.emoji);
+      p.emoji = AVATARS[(at + 1 + AVATARS.length) % AVATARS.length];
+      pick.textContent = p.emoji; snd.tick(2);
+    });
+    row.appendChild(pick);
+    const name = document.createElement('input');
+    name.value = p.name; name.maxLength = 14; name.placeholder = 'Player ' + (i+1);
+    name.setAttribute('aria-label', 'Player ' + (i+1) + ' name');
+    name.addEventListener('input', () => { p.name = name.value.slice(0,14); });
+    row.appendChild(name);
+    if (G.locals.length > 2){
+      const drop = el('button','drop','✕');
+      drop.setAttribute('aria-label', 'Remove ' + p.name);
+      drop.addEventListener('click', () => { G.locals.splice(i,1); renderPassList(); snd.tick(1); });
+      row.appendChild(drop);
+    }
+    list.appendChild(row);
+  });
+  $('pass-count').textContent = G.locals.length + ' players';
+  $('btn-pass-add').hidden = G.locals.length >= 8;
+}
+$('btn-pass').addEventListener('click', openPass);
+$('btn-pass-back').addEventListener('click', () => show('home'));
+$('btn-pass-add').addEventListener('click', () => {
+  if (G.locals.length >= 8) return;
+  G.locals.push(newLocal(G.locals.length));
+  renderPassList(); snd.tick(3);
+});
+$('btn-pass-start').addEventListener('click', startPassGame);
+
+function startPassGame(){
+  leaveNet();
+  G.mode = 'pass'; G.code = null; G.isHost = true; G.peers = new Map(); G.finsSelf = {};
+  G.cfg = sanitizeCfg(store.get('cfg', {g:4, t:180, m:3, r:1}));
+  G.locals.forEach((p, i) => {
+    p.name = (p.name || '').trim() || ('Player ' + (i+1));
+    p.sc = {}; p.wc = {}; p.fin = {};
+  });
+  store.set('crew', G.locals.map(p => ({n: p.name, e: p.emoji})));   // same crew next time, one tap
+  const rnd = Math.random().toString(36).slice(2,8);
+  G.gameId = 'pass-' + rnd;
+  G.seeds = [];
+  for (let i=0;i<G.cfg.r;i++) G.seeds.push('bfp-pass-' + rnd + '-' + i);
+  G.round = 0; G.turn = 0;
+  passHandover();
+}
+/* The screen between turns: it names who is next and, crucially, hides the
+   board and the last player's words until they say they are ready. */
+function passHandover(){
+  stopRound();
+  clearSel();
+  const p = G.locals[G.turn];
+  if (!p) return;
+  $('hand-round').textContent = G.cfg.r > 1
+    ? 'Round ' + (G.round+1) + ' of ' + G.cfg.r + ' · player ' + (G.turn+1) + ' of ' + G.locals.length
+    : 'Player ' + (G.turn+1) + ' of ' + G.locals.length;
+  const face = $('hand-face');
+  face.textContent = p.emoji;
+  face.style.setProperty('--c', COLORS[G.turn % COLORS.length]);
+  $('hand-name').textContent = G.turn === 0 && G.round === 0 ? p.name + ', you\'re first!' : 'Pass to ' + p.name;
+  $('hand-note').textContent = 'Everyone plays the same board — no peeking at anyone else\'s words!';
+  // who has already been, and how they did
+  const done = $('hand-done'); done.replaceChildren();
+  G.locals.slice(0, G.turn).forEach(q => {
+    const f = q.fin[G.round];
+    const chip = el('span','');
+    chip.appendChild(el('i','', q.emoji));
+    chip.appendChild(document.createTextNode(f ? f.w + 'w' : '—'));
+    done.appendChild(chip);
+  });
+  show('hand');
+}
+$('btn-hand-go').addEventListener('click', () => {
+  G.startAt = Date.now() + 4200;
+  beginRound();
+});
+function passRoundOver(){
+  if (G.turn < G.locals.length - 1){ G.turn++; passHandover(); return; }
+  // everyone has had their go — now the show
+  runReveal(() => {
+    renderPodium(); show('podium');
+    confettiBurst();
+    (G.round >= G.cfg.r - 1) ? snd.fanfare() : snd.up();
+  });
+}
+function passNextRound(){
+  G.round++; G.turn = 0;
+  clearReveal();
+  passHandover();
+}
+
 /* ---------------- hall of fame ---------------- */
 function renderHallOfFame(){
   const r = record();
@@ -773,6 +893,7 @@ function markCounted(key){
   store.set('counted', list.slice(-30));   // enough to outlive an evening
 }
 function creditGame(rows){
+  if (G.mode === 'pass') return;   // several people on one phone — not one person's record
   const key = gameKey();
   if (!key || alreadyCounted(key)) return;
   if (G.mode === 'party'){
@@ -821,6 +942,7 @@ function creditGame(rows){
 })();
 /* Round-level bests, from any mode. */
 function creditRound(fin){
+  if (G.mode === 'pass') return;   // ditto — these aren't the owner's words
   const r = record();
   if (fin.s > r.pb) r.pb = fin.s;
   if (fin.bp > r.bwp || (fin.bp === r.bwp && (fin.b||'').length > (r.bw||'').length)){
@@ -1113,11 +1235,13 @@ function sanitizeCfg(d){
   };
 }
 function activePlayers(){ // everyone incl. me, not gone
+  if (G.mode === 'pass') return G.locals.map(p => [p.id, p]);
   const list = [[Trystero.selfId, {name:P.name, emoji:P.emoji, joinedAt:G.joinedAt, host:G.isHost, gone:false, sc:scSelf(), fin:G.finsSelf, me:true}]];
   for (const [id,p] of G.peers) if (!p.gone) list.push([id, p]);
   return list.sort((a,b) => (a[1].joinedAt - b[1].joinedAt) || (a[0] < b[0] ? -1 : 1));
 }
 function everyone(){ // incl. gone (for results)
+  if (G.mode === 'pass') return G.locals.map(p => [p.id, p]);
   const list = [[Trystero.selfId, {name:P.name, emoji:P.emoji, joinedAt:G.joinedAt, host:G.isHost, gone:false, sc:scSelf(), fin:G.finsSelf, me:true}]];
   for (const [id,p] of G.peers) list.push([id, p]);
   return list.sort((a,b) => (a[1].joinedAt - b[1].joinedAt) || (a[0] < b[0] ? -1 : 1));
@@ -1417,7 +1541,7 @@ function renderSettings(){
     seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === G.cfg[key]));
   }
   $('settings-owner').textContent = G.mode !== 'party'
-    ? 'for your parties & solo games'
+    ? 'for every game on this phone'
     : (G.isHost ? "you're the host — you decide!" : 'the host picks these');
   $('home-set-sum').textContent = cfgSummary();
   // A 4×4 board frequently holds no 6-letter word at all — roughly one board in
@@ -1534,6 +1658,7 @@ function resetToLobby(){
   openLobby();
 }
 $('btn-again').addEventListener('click', () => {
+  if (G.mode === 'pass') return startPassGame();   // same crew, fresh boards
   if (G.mode === 'party'){
     if (!G.isHost) return;
     G.net && G.net.A.again.send({t:1});
@@ -1592,7 +1717,7 @@ function beginRound(){
   G.totalMs = DEV ? 25000 : G.cfg.t * 1000;
 
   renderBoard();
-  $('my-score').hidden = G.mode === 'party';   // the rail shows yours in a party
+  $('my-score').hidden = G.mode === 'party' || G.mode === 'pass';   // the rail carries it
   $('round-pill').textContent = 'R' + (G.round+1) + '/' + G.cfg.r;
   $('my-score').textContent = '0';   // words, not points — see the HUD
   $('found-row').replaceChildren($('found-empty')); $('found-empty').style.display = '';
@@ -1942,30 +2067,35 @@ window.addEventListener('keydown', e => {
 let rivalEls = new Map(), rivalSig = null;
 function renderRivals(){
   const rail = $('rivals');
-  if (G.mode !== 'party'){ rail.replaceChildren(); rivalEls = new Map(); rivalSig = null; return; }
+  if (G.mode !== 'party' && G.mode !== 'pass'){ rail.replaceChildren(); rivalEls = new Map(); rivalSig = null; return; }
   /* Mid-round the number that matters is HOW MANY WORDS, not points — that is
      what everyone shouts across the room. Points are for the results. */
   /* EVERYONE, you included — it is the same little scoreboard on every phone,
      so you and Scarlett both see both counts rather than only each other's. */
-  const rows = everyone().map(([id,p]) => ({
-    id, p, score: (p.me ? G.score : (p.sc && p.sc[G.round]) || 0), words: wordsOf(p, G.round)
-  })).sort((a,b) => b.words - a.words || b.score - a.score);
-  const sig = rows.map(r => r.id + (r.p.me?'*':'') + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
+  const rows = everyone().map(([id,p], i) => {
+    // pass & play: the person holding the phone is whoever's turn it is
+    const mine = G.mode === 'pass' ? (i === G.turn) : p.me;
+    return {id, p, mine,
+            score: mine ? G.score : (p.sc && p.sc[G.round]) || 0,
+            words: mine ? G.found.size : wordsOf(p, G.round),
+            yet: G.mode === 'pass' && i > G.turn};
+  }).sort((a,b) => b.words - a.words || b.score - a.score);
+  const sig = rows.map(r => r.id + (r.mine?'*':'') + (r.yet?'?':'') + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
   if (sig !== rivalSig){                 // roster changed — rebuild the chips
     rivalSig = sig;
     rivalEls = new Map();
     rail.replaceChildren();
     rows.forEach(r => {
       // avatar, then who, then how many — read as a scoreboard row
-      const d = el('div','rival' + (r.p.me ? ' me' : ''));
+      const d = el('div','rival' + (r.mine ? ' me' : '') + (r.yet ? ' yet' : ''));
       const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
       d.appendChild(face);
-      const nm = el('small','', r.p.me ? 'you' : r.p.name);
+      const nm = el('small','', r.mine ? 'you' : r.p.name);
       d.appendChild(nm);
-      const b = el('b','', String(r.words));
+      const b = el('b','', r.yet ? '–' : String(r.words));
       d.appendChild(b);
       rail.appendChild(d);
-      rivalEls.set(r.id, {d, b, nm, name: r.p.me ? 'you' : r.p.name});
+      rivalEls.set(r.id, {d, b, nm, name: r.mine ? 'you' : r.p.name});
     });
   }
   rows.forEach((r, i) => {
@@ -1974,7 +2104,7 @@ function renderRivals(){
     e.d.style.order = i;
     e.d.classList.toggle('first', i === 0 && r.words > 0);
     e.d.classList.toggle('gone', !!r.p.gone);
-    const txt = String(r.words);
+    const txt = r.yet ? '–' : String(r.words);
     if (e.b.textContent !== txt){
       e.b.textContent = txt;
       // a small kick when someone's count moves, so you notice it happen
@@ -2032,6 +2162,11 @@ function roundOver(wasSpectating){
     }
     if (G.net) G.net.A.fin.send({...fin, gid: G.gameId});
   }
+  if (G.mode === 'pass'){
+    // bank this player's turn on their own record, then hand the phone on
+    const me = G.locals[G.turn];
+    if (me){ me.fin[G.round] = fin; me.sc[G.round] = fin.s; me.wc[G.round] = fin.w; }
+  }
   clearTimeout(G.finTimer);
   G.finTimer = setTimeout(() => { hideOverlay(); routeAfterRound(); }, wasSpectating ? 800 : 1400);
 }
@@ -2041,6 +2176,7 @@ function roundOver(wasSpectating){
    after the last round it's the final result. */
 function routeAfterRound(){
   podiumSig = null;   // a new round's podium always rebuilds
+  if (G.mode === 'pass'){ passRoundOver(); return; }
   if (G.mode !== 'party'){ renderLocalResults(); show('standings'); return; }
   /* Anything the round was protecting us from gets honoured now: the host may
      have moved on while this phone was still finishing. */
@@ -2181,7 +2317,10 @@ function renderStandingsCtas(){
   if ($('scr-podium').classList.contains('active')) renderPodium();
 }
 $('btn-next-round').addEventListener('click', () => { if (G.isHost) hostNextRound(); });
-$('btn-podium-next').addEventListener('click', () => { if (G.isHost) hostNextRound(); });
+$('btn-podium-next').addEventListener('click', () => {
+  if (G.mode === 'pass') return passNextRound();
+  if (G.isHost) hostNextRound();
+});
 
 /* local (solo/daily) results reuse the standings screen */
 function renderLocalResults(){
@@ -2612,7 +2751,7 @@ function runReveal(done){
    the standings have actually changed (same fix as the lobby roster). */
 let podiumSig = null;
 function renderPodium(){
-  if (G.mode !== 'party') return;
+  if (G.mode !== 'party' && G.mode !== 'pass') return;
   const last = G.round >= G.cfg.r - 1;
   const multi = G.cfg.r > 1;
   const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p), rd: roundScoreOf(p, G.round),
@@ -2703,11 +2842,12 @@ function renderPodium(){
   }
   $('btn-podium-next').hidden = !(G.isHost && !last);
   $('btn-again').hidden = !(G.isHost && last);
-  $('podium-wait').hidden = G.isHost;
+  $('podium-wait').hidden = G.isHost || G.mode === 'pass';
   $('podium-wait').textContent = last
     ? 'Waiting for the host…'
     : 'Waiting for the host to start round ' + (G.round+2) + '…';
-  mountChat('podium-chat-slot');   // the bit where everyone talks trash
+  if (G.mode === 'party') mountChat('podium-chat-slot');   // the bit where everyone talks trash
+  else $('chat-bar').hidden = true;
 }
 
 /* ---------------- confetti ---------------- */

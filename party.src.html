@@ -176,6 +176,44 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .mode-card{position:relative}
 .home-foot{margin-top:auto;text-align:center;color:rgba(255,255,255,.85);font-size:12.5px;font-weight:600;text-shadow:0 1px 0 rgba(18,26,96,.3);padding-top:14px}
 
+/* ---------- PASS & PLAY ---------- */
+.pass-chip{display:flex;align-items:center;gap:11px;text-align:left;background:var(--white);border-radius:20px;
+  padding:11px 12px 11px 14px;margin-top:10px;box-shadow:0 5px 0 rgba(20,30,120,.2),0 10px 24px rgba(20,30,120,.18);
+  transition:transform .1s ease,box-shadow .1s ease}
+.pass-chip:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(20,30,120,.2)}
+.pass-chip .pc-ic{font-size:24px;line-height:1}
+.pass-chip .pc-body{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.pass-chip .pc-body b{font-family:var(--display);font-weight:800;font-size:16px;color:var(--navy)}
+.pass-chip .pc-body small{font-size:12.5px;font-weight:600;color:var(--navy-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pass-chip .pc-go{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12.5px;color:#fff;
+  background:var(--green);border-radius:999px;padding:7px 13px;box-shadow:0 2px 0 var(--green-edge)}
+#scr-pass{gap:12px}
+.pass-intro{color:#fff;font-weight:600;font-size:13.5px;line-height:1.4;text-align:center;text-shadow:0 1px 0 rgba(18,26,96,.35)}
+.pass-card{display:flex;flex-direction:column;gap:11px}
+.pass-card h3{font-family:var(--display);font-weight:800;font-size:17px;color:var(--navy);display:flex;justify-content:space-between;align-items:baseline}
+.pass-card h3 small{font-family:var(--body);font-weight:600;font-size:11.5px;color:var(--navy-soft)}
+.pass-list{display:flex;flex-direction:column;gap:8px}
+.pass-row{display:flex;align-items:center;gap:8px}
+.pass-row .pick{flex:0 0 auto;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:23px;
+  background:#F3F0E6;border:3px solid var(--c,#3B82F6)}
+.pass-row input{flex:1;min-width:0;background:#F3F0E6;border:0;border-radius:12px;padding:10px 12px;
+  font-family:var(--display);font-weight:800;font-size:16px;color:var(--navy)}
+.pass-row .drop{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  font-size:15px;color:var(--navy-soft);background:#F0EDE2}
+.chip-btn.dark{align-self:flex-start;color:var(--navy);background:#F0EDE2;border-color:transparent;text-shadow:none}
+#scr-hand{justify-content:center;text-align:center}
+.hand-body{display:flex;flex-direction:column;align-items:center;gap:14px}
+.hand-round{font-weight:700;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:#fff;opacity:.9}
+.hand-face{width:112px;height:112px;border-radius:50%;display:grid;place-items:center;font-size:60px;background:#fff;
+  border:6px solid var(--c,#3B82F6);box-shadow:0 8px 0 rgba(20,6,50,.28);animation:blobin .4s cubic-bezier(.2,1.6,.4,1)}
+.hand-name{font-family:var(--display);font-weight:800;font-size:32px;line-height:1.1;color:#fff;text-shadow:0 3px 0 rgba(20,6,50,.55)}
+.hand-note{font-weight:600;font-size:14px;color:#fff;opacity:.9;max-width:280px}
+.hand-body .btn{align-self:stretch;margin-top:6px}
+.hand-done{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:6px}
+.hand-done span{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.9);border-radius:999px;
+  padding:4px 10px 4px 5px;font-family:var(--display);font-weight:800;font-size:13px;color:var(--die)}
+.hand-done i{font-style:normal;font-size:16px}
+
 /* ---------- HALL OF FAME ---------- */
 .hof-chip{display:flex;align-items:center;gap:11px;text-align:left;background:var(--white);border-radius:20px;
   padding:11px 12px 11px 14px;margin-top:10px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(20,30,120,.18);
@@ -311,7 +349,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .rival.first{background:var(--gold);box-shadow:0 3px 0 var(--gold-edge)}
 .rival.me{outline:3px solid #fff;outline-offset:-1px}
 .rival.gone{opacity:.4;filter:grayscale(1)}
-.rival.gone{opacity:.4;filter:grayscale(1)}
+.rival.yet{opacity:.55}   /* pass & play: hasn't had their go yet */
 .word-pill-wrap{display:flex;justify-content:center;height:48px;align-items:center;position:relative;margin-top:auto}
 /* The banner over the board: "Minimum N characters!" until you start tracing,
    then the word itself — the same deep-violet pill either way, with the little
@@ -659,6 +697,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
       <span class="hof-body"><b>Hall of Fame</b><small id="hof-line">your wins, your best ever</small></span>
       <span class="hof-go">SEE</span>
     </button>
+    <button class="pass-chip" id="btn-pass">
+      <span class="pc-ic">📱</span>
+      <span class="pc-body"><b>Pass &amp; Play</b><small>One phone round the table — works with no signal</small></span>
+      <span class="pc-go">GO</span>
+    </button>
     <div class="mode-cards">
       <button class="mode-card" id="btn-daily">
         <span class="daily-done" id="daily-done" hidden>DONE ✓</span>
@@ -669,6 +712,37 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
       </button>
     </div>
     <div class="home-foot" id="home-stats">Find words. Longer = more points!</div>
+  </section>
+
+  <!-- ============ PASS & PLAY SETUP ============ -->
+  <section class="screen" id="scr-pass">
+    <div class="lobby-head">
+      <button class="back" id="btn-pass-back">‹ Back</button>
+      <span class="eyebrow on-stage" style="letter-spacing:.22em">PASS &amp; PLAY</span>
+      <span style="width:64px"></span>
+    </div>
+    <div class="pass-intro">One phone, passed round the table. Everyone gets the same board and their own turn — no internet needed.</div>
+    <div class="card pass-card">
+      <h3>Who's playing? <small id="pass-count">2 players</small></h3>
+      <div class="pass-list" id="pass-list"></div>
+      <button class="chip-btn dark" id="btn-pass-add">+ Add a player</button>
+    </div>
+    <div id="pass-set-slot"></div>
+    <div class="lobby-cta">
+      <button class="btn gold big" id="btn-pass-start">Start!</button>
+    </div>
+  </section>
+
+  <!-- ============ PASS & PLAY HANDOVER ============ -->
+  <section class="screen" id="scr-hand">
+    <div class="hand-body">
+      <div class="hand-round" id="hand-round">Round 1 of 3</div>
+      <div class="hand-face" id="hand-face">🦊</div>
+      <div class="hand-name" id="hand-name">Pass to Sandra</div>
+      <div class="hand-note" id="hand-note">Same board for everyone — don't peek!</div>
+      <button class="btn green big" id="btn-hand-go">I'm ready — start my turn</button>
+      <div class="hand-done" id="hand-done"></div>
+    </div>
   </section>
 
   <!-- ============ HALL OF FAME ============ -->

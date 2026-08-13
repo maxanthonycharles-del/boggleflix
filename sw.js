@@ -15,7 +15,7 @@
    used when the network fails. version.txt is never cached, or the update
    prompt would be lying.
    ================================================================ */
-const BUILD = '41a9dda4d37f';
+const BUILD = 'd5a7c5bf32ab';
 const CACHE = 'boggleflix-' + BUILD;
 const PAGE = './';
 
