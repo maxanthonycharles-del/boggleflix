@@ -541,6 +541,26 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 setTimeout(checkForUpdate, 4000);
 setInterval(checkForUpdate, 5 * 60 * 1000);
 
+/* ---------------- playing with no signal ----------------
+   Everything the game needs is already in this one file, so Solo Practice and
+   the Daily Puzzle work with no connection at all — they only need the page to
+   open. The worker keeps a copy so it does. Party mode genuinely can't: the
+   phones talk through public brokers. */
+if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});   // http:// dev, private mode, etc
+  });
+}
+function online(){ return navigator.onLine !== false; }
+function applyOnlineUI(){
+  const off = !online();
+  $('offline-note').hidden = !off;
+  $('btn-host').classList.toggle('dimmed', off);
+  $('btn-join').classList.toggle('dimmed', off);
+}
+window.addEventListener('online', applyOnlineUI);
+window.addEventListener('offline', applyOnlineUI);
+
 /* ---------------- screens / toast / overlay ---------------- */
 const SCREENS = ['name','home','hof','join','lobby','game','standings','reveal','podium'];
 function show(name){
@@ -609,6 +629,7 @@ function toggleSound(){
   if (P.sound) snd.tick(3);
 }
 function refreshHome(){
+  applyOnlineUI();
   $('me-name').textContent = P.name || 'Player';
   $('me-face').textContent = P.emoji || '🦊';
   applySoundUI();
@@ -644,8 +665,14 @@ $('btn-invite-no').addEventListener('click', () => {
   if (pendingIsRejoin){ pendingIsRejoin = false; store.set('lastparty', null); }  // don't nag again
   refreshHome(); snd.tick(1);
 });
-$('btn-host').addEventListener('click', () => hostParty());
-$('btn-join').addEventListener('click', () => { $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80); });
+$('btn-host').addEventListener('click', () => {
+  if (!online()) return toast('No connection — a party needs one. Solo and the Daily still work!', 3200);
+  hostParty();
+});
+$('btn-join').addEventListener('click', () => {
+  if (!online()) return toast('No connection — a party needs one. Solo and the Daily still work!', 3200);
+  $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80);
+});
 $('btn-join-back').addEventListener('click', () => show('home'));
 $('btn-solo').addEventListener('click', () => startLocal('solo'));
 /* ---------------- hall of fame ---------------- */

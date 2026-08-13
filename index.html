@@ -4,7 +4,12 @@
 <meta charset="utf-8">
 <title>Boggleflix Party — swipe words, play together!</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#FF6FB5">
+<meta name="theme-color" content="#45C4F0">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Boggleflix">
 <meta property="og:title" content="Boggleflix Party">
 <meta property="og:description" content="The family word race — join with a code and play together on your phones!">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='4' y='4' width='92' height='92' rx='22' fill='%23FFF8E7' stroke='%231E2A5E' stroke-width='6'/><text x='50' y='72' font-size='58' text-anchor='middle' font-family='Arial Black' fill='%231E2A5E'>B</text></svg>">
@@ -157,6 +162,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .set-summary .ss-body small{font-size:12.5px;font-weight:600;color:var(--navy-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .set-summary .ss-go{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12.5px;color:#fff;background:var(--blue);
   border-radius:999px;padding:7px 13px;box-shadow:0 2px 0 var(--blue-edge)}
+.offline-note{margin-top:2px;text-align:center;font-weight:700;font-size:12.5px;line-height:1.35;color:#fff;
+  background:rgba(20,6,50,.34);border-radius:14px;padding:8px 10px}
+.btn.dimmed{filter:saturate(.5) brightness(.92)}
 .mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
 .mode-card{background:var(--white);border-radius:20px;box-shadow:0 5px 0 rgba(30,42,94,.18),0 10px 24px rgba(20,30,120,.18);
   padding:14px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;transition:transform .1s ease}
@@ -639,6 +647,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
       <button class="btn gold big" id="btn-host">🎉&nbsp; Host a party</button>
       <button class="btn blue big" id="btn-join">🔑&nbsp; Join with a code</button>
       <div class="cta-note">Up to 8 players · everyone plays on their own phone</div>
+      <div class="offline-note" id="offline-note" hidden>📴 No connection — a party needs one, but Solo Practice and the Daily Puzzle work offline</div>
     </div>
     <button class="set-summary" id="btn-home-settings" aria-haspopup="dialog">
       <span class="ss-ic">⚙️</span>
@@ -1575,7 +1584,7 @@ const DEV = /[?#&]dev\b/.test(location.href);
    next to index.html and says what the server has right now; a few bytes,
    never cached. If it disagrees with the build baked into this page, offer the
    update — never mid-round, and never without asking. */
-const BUILD = "9eb4326a24b2";
+const BUILD = "41a9dda4d37f";
 let updateReady = null;
 async function checkForUpdate(){
   if (updateReady || G.playing) return;
@@ -1608,6 +1617,26 @@ function showUpdateBar(){
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
 setTimeout(checkForUpdate, 4000);
 setInterval(checkForUpdate, 5 * 60 * 1000);
+
+/* ---------------- playing with no signal ----------------
+   Everything the game needs is already in this one file, so Solo Practice and
+   the Daily Puzzle work with no connection at all — they only need the page to
+   open. The worker keeps a copy so it does. Party mode genuinely can't: the
+   phones talk through public brokers. */
+if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});   // http:// dev, private mode, etc
+  });
+}
+function online(){ return navigator.onLine !== false; }
+function applyOnlineUI(){
+  const off = !online();
+  $('offline-note').hidden = !off;
+  $('btn-host').classList.toggle('dimmed', off);
+  $('btn-join').classList.toggle('dimmed', off);
+}
+window.addEventListener('online', applyOnlineUI);
+window.addEventListener('offline', applyOnlineUI);
 
 /* ---------------- screens / toast / overlay ---------------- */
 const SCREENS = ['name','home','hof','join','lobby','game','standings','reveal','podium'];
@@ -1677,6 +1706,7 @@ function toggleSound(){
   if (P.sound) snd.tick(3);
 }
 function refreshHome(){
+  applyOnlineUI();
   $('me-name').textContent = P.name || 'Player';
   $('me-face').textContent = P.emoji || '🦊';
   applySoundUI();
@@ -1712,8 +1742,14 @@ $('btn-invite-no').addEventListener('click', () => {
   if (pendingIsRejoin){ pendingIsRejoin = false; store.set('lastparty', null); }  // don't nag again
   refreshHome(); snd.tick(1);
 });
-$('btn-host').addEventListener('click', () => hostParty());
-$('btn-join').addEventListener('click', () => { $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80); });
+$('btn-host').addEventListener('click', () => {
+  if (!online()) return toast('No connection — a party needs one. Solo and the Daily still work!', 3200);
+  hostParty();
+});
+$('btn-join').addEventListener('click', () => {
+  if (!online()) return toast('No connection — a party needs one. Solo and the Daily still work!', 3200);
+  $('code-input').value = ''; show('join'); setTimeout(()=>$('code-input').focus(), 80);
+});
 $('btn-join-back').addEventListener('click', () => show('home'));
 $('btn-solo').addEventListener('click', () => startLocal('solo'));
 /* ---------------- hall of fame ---------------- */

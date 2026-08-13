@@ -77,4 +77,12 @@ out = (src
 
 (root / 'index.html').write_text(out)
 (root / 'version.txt').write_text(BUILD + '\n')
-print(f'index.html {len(out.encode()):,} bytes  build {BUILD}')
+
+# Offline: a service worker keeps a copy of the page so Solo Practice and the
+# Daily Puzzle work with no signal (party mode needs the brokers, so it can't).
+# The cache is named after the build, so a new build replaces the old copy
+# rather than living alongside it.
+sw = read('assets/sw.src.js').replace('__BUILD__', BUILD)
+(root / 'sw.js').write_text(sw)
+(root / 'manifest.webmanifest').write_text(read('assets/manifest.src.json'))
+print(f'index.html {len(out.encode()):,} bytes  build {BUILD}  (+ sw.js, manifest.webmanifest)')
