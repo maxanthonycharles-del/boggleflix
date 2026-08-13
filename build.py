@@ -85,4 +85,21 @@ out = (src
 sw = read('assets/sw.src.js').replace('__BUILD__', BUILD)
 (root / 'sw.js').write_text(sw)
 (root / 'manifest.webmanifest').write_text(read('assets/manifest.src.json'))
+
+# ---- dist/: exactly what a deploy needs, and nothing else ----------------
+# Netlify is deployed by dragging a folder onto it, so hand over a folder with
+# the four files and the icons in it — dragging the whole project would upload
+# ten megabytes of source and word lists, and dragging index.html alone would
+# leave the site with no service worker, which is what makes it work offline.
+import shutil
+dist = root / 'dist'
+if dist.exists():
+    shutil.rmtree(dist)
+(dist / 'assets' / 'icons').mkdir(parents=True)
+for f in ('index.html', 'sw.js', 'manifest.webmanifest', 'version.txt'):
+    shutil.copy2(root / f, dist / f)
+for png in sorted((root / 'assets' / 'icons').glob('*.png')):
+    shutil.copy2(png, dist / 'assets' / 'icons' / png.name)
+size = sum(f.stat().st_size for f in dist.rglob('*') if f.is_file())
+print(f'dist/ ready to drop on Netlify — {len(list(dist.rglob("*")))} items, {size/1e6:.1f} MB')
 print(f'index.html {len(out.encode()):,} bytes  build {BUILD}  (+ sw.js, manifest.webmanifest)')
