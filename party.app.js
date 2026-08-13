@@ -2342,17 +2342,17 @@ function runReveal(done){
     bubbles.forEach(b => b.el.classList.remove('src'));
     stage.dataset.lit = '';
   }
-  function showWord(e2){
+  function showWord(e2, path){
     unlight();
     stage.replaceChildren();
     const card = el('div','rv-word' + (e2.unique ? ' unique' : ''));
     const word = e2.w.toUpperCase();
-    const spell = 62;   // ms per letter as it is spelled out on the tray
-    const BEAT = 200;   // the pause between making the word and showing it
-    /* The word is shown WHERE IT WAS on the tray, lighting up a die at a time —
-       that's the bit that tells you how you missed it. If the path can't be
-       found (a board we no longer hold), fall back to spelling it out. */
-    const path = wordPath(word);
+    const spell = SPELL;
+    /* The word is shown WHERE IT WAS on the tray, picked out a die at a time
+       with the trace drawing itself behind it, as though someone were swiping
+       it in front of you. If the path can't be found (a board we no longer
+       hold), fall back to spelling it out. */
+    if (path === undefined) path = wordPath(word);
     if (path){
       const grid = el('div','rv-board');
       grid.style.gridTemplateColumns = 'repeat(' + G.n + ',1fr)';
@@ -2362,13 +2362,33 @@ function runReveal(done){
         if (order.has(idx)) cell.style.animationDelay = (order.get(idx) * spell) + 'ms';
         grid.appendChild(cell);
       });
+      // the finger: a line that grows from die to die, in step with the letters
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('class', 'rv-trace');
+      svg.setAttribute('viewBox', '0 0 100 100');
+      svg.setAttribute('preserveAspectRatio', 'none');
+      const step = 100 / G.n;
+      const line = document.createElementNS(SVG_NS, 'path');
+      line.setAttribute('d', path.map((cell, k) => {
+        const x = ((cell % G.n) + .5) * step, y = (Math.floor(cell / G.n) + .5) * step;
+        return (k ? 'L' : 'M') + x.toFixed(2) + ' ' + y.toFixed(2);
+      }).join(' '));
+      svg.appendChild(line);
+      grid.appendChild(svg);
       card.appendChild(grid);
-      /* A beat after the last die lands, THEN the word itself — three clear
-         steps: the word being made on the board, the word, and then it going
-         down to whoever found it. */
       const label = el('div','rv-wordtext', word);
       label.style.animationDelay = (path.length * spell + BEAT) + 'ms';
       card.appendChild(label);
+      // measurable only once it's in the document
+      requestAnimationFrame(() => {
+        if (!line.isConnected || !line.getTotalLength) return;
+        const len = line.getTotalLength() || 1;
+        line.style.strokeDasharray = len;
+        if (reduced || !line.animate){ line.style.strokeDashoffset = 0; return; }
+        line.style.strokeDashoffset = len;
+        line.animate([{strokeDashoffset: len}, {strokeDashoffset: 0}],
+          {duration: Math.max(1, (path.length - 1) * spell), easing: 'linear', fill: 'forwards'});
+      });
     } else {
       const tiles = el('div','rv-tiles');
       tiles.style.setProperty('--ts', Math.max(15, Math.min(36, Math.floor((Math.min(innerWidth, 520) - 70) / word.length * .60))) + 'px');
@@ -2382,7 +2402,7 @@ function runReveal(done){
     /* Whose word is it? Every word names its finders — avatar AND name —
        because the batched words used to show no owner at all, which is what
        made the whole reveal unreadable. */
-    const lands = (path ? path.length : word.length) * spell + BEAT + 190;
+    const lands = (path ? path.length : word.length) * spell + BEAT + 190;   // when the names appear
     const row = el('div','rv-finders');
     e2.finders.forEach((id, i) => {
       const r = rows.find(x => x.id === id);
@@ -2498,7 +2518,16 @@ function runReveal(done){
      NOT go back to scaling this by word count; that is the mistake that made
      big rounds unreadable in the first place. A long round is long: the
      tap-to-skip on the reveal screen is the escape hatch, not a faster clock. */
-  const DWELL = 1500, DWELL_UNIQUE = 1700, FLY = 520;   // "a little quicker. Only a tiny bit"
+  /* Paced like a finger, not a slideshow. Each letter is picked out at a human
+     speed with the trace drawing itself behind it, then the finished word is
+     HELD long enough to actually read before it goes to whoever found it —
+     "not enough time to see it" was the note. A word therefore takes as long as
+     it takes: a four-letter word about 2s, ANACONDAS about 3s. */
+  const SPELL = 170;      // per letter, as it is selected on the tray
+  const BEAT = 280;       // pause between the last letter and the word appearing
+  const FLY_AT = 520;     // how long the word stands alone before it travels
+  const HOLD = 700;       // …and how long the whole card is held after that
+  const FLY = 520;
   let t = 1050, tickN = 0;
   const at2 = (ms, fn) => revealTimers.push(setTimeout(fn, ms));
 
@@ -2507,13 +2536,16 @@ function runReveal(done){
     // smallest first, so each phase builds towards its biggest word
     const asc = list.slice().sort((a,b) => a.pts - b.pts || a.w.localeCompare(b.w));
     asc.forEach(e2 => {
+      // trace it once here: it sets both the picture and the pace
+      const path = wordPath(e2.w);
+      const steps = path ? path.length : e2.w.length;
+      const showAt = steps * SPELL + BEAT;      // when the word itself lands
       at(t, () => {
-        const lands = showWord(e2);
+        showWord(e2, path);
         unique ? snd.spark() : snd.tick(tickN++ % 8);
-        // the word sits and is read, THEN flies into whoever found it
-        at2(lands + 260, () => flyToFinders(e2));
+        at2(showAt + FLY_AT, () => flyToFinders(e2));
       });
-      t += (unique ? DWELL_UNIQUE : DWELL) + Math.min(4, e2.w.length - 3) * 55;
+      t += showAt + FLY_AT + HOLD + (unique ? 200 : 0);
     });
     return t;
   }
