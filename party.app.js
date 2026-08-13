@@ -764,7 +764,7 @@ function passHandover(){
   face.textContent = p.emoji;
   face.style.setProperty('--c', COLORS[G.turn % COLORS.length]);
   $('hand-name').textContent = G.turn === 0 && G.round === 0 ? p.name + ', you\'re first!' : 'Pass to ' + p.name;
-  $('hand-note').textContent = 'Everyone plays the same board — no peeking at anyone else\'s words!';
+  $('hand-note').textContent = 'Same board for everyone — no peeking at anyone else\'s words!';
   // who has already been, and how they did
   const done = $('hand-done'); done.replaceChildren();
   G.locals.slice(0, G.turn).forEach(q => {

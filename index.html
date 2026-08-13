@@ -188,7 +188,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .pass-chip .pc-go{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:12.5px;color:#fff;
   background:var(--green);border-radius:999px;padding:7px 13px;box-shadow:0 2px 0 var(--green-edge)}
 #scr-pass{gap:12px}
-.pass-intro{color:#fff;font-weight:600;font-size:13.5px;line-height:1.4;text-align:center;text-shadow:0 1px 0 rgba(18,26,96,.35)}
+.pass-how{list-style:none;counter-reset:step;display:flex;flex-direction:column;gap:7px}
+.pass-how li{counter-increment:step;display:flex;align-items:center;gap:10px;color:#fff;font-weight:600;font-size:14px;
+  line-height:1.3;text-shadow:0 1px 0 rgba(18,26,96,.35)}
+.pass-how li span{flex:1;min-width:0}
+.pass-how li::before{content:counter(step);flex:0 0 auto;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--display);font-weight:800;font-size:13px;color:var(--die);background:#fff}
+.pass-how b{font-weight:800}
+.pass-when{color:#fff;font-weight:600;font-size:12.5px;line-height:1.45;text-align:center;opacity:.92;
+  background:rgba(20,6,50,.24);border-radius:14px;padding:9px 11px}
+.pass-when b{font-weight:800}
 .pass-card{display:flex;flex-direction:column;gap:11px}
 .pass-card h3{font-family:var(--display);font-weight:800;font-size:17px;color:var(--navy);display:flex;justify-content:space-between;align-items:baseline}
 .pass-card h3 small{font-family:var(--body);font-weight:600;font-size:11.5px;color:var(--navy-soft)}
@@ -484,24 +493,28 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   animation:wordin .32s cubic-bezier(.2,1.6,.4,1)}
 @keyframes wordin{from{transform:scale(.5) rotate(-3deg);opacity:0}}
 /* The round's tray, replayed: the word lights up where it actually was. */
-.rv-board{position:relative;display:grid;gap:5px;width:min(56vw,228px);margin:0 auto}
+/* The same tray you played on: pale panel, deep-violet dice with white letters,
+   green where the word runs. Only smaller. */
+.rv-board{position:relative;display:grid;gap:6px;width:min(64vw,262px);margin:0 auto;
+  background:rgba(255,255,255,.3);border-radius:18px;padding:7px;box-shadow:inset 0 1px 0 rgba(255,255,255,.45)}
 /* the finger: a line drawn between the dice as they are picked out */
 /* above the dice, not behind them — grid items honour z-index, so at 2 the line
    was hidden under the very tiles it joins */
-.rv-trace{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;overflow:visible}
+.rv-trace{position:absolute;inset:7px;width:calc(100% - 14px);height:calc(100% - 14px);pointer-events:none;z-index:5;overflow:visible}
 .rv-trace path{fill:none;stroke:rgba(255,255,255,.6);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;
   filter:drop-shadow(0 1px 2px rgba(16,51,31,.35))}
 .rv-word.unique .rv-trace path{stroke:rgba(255,240,170,.95)}
 .rv-cell{aspect-ratio:1;border-radius:22%;display:grid;place-items:center;font-family:var(--display);font-weight:800;
-  font-size:clamp(10px,3.2vw,17px);line-height:1;color:rgba(255,255,255,.4);
-  background:linear-gradient(180deg,rgba(74,14,120,.55),rgba(58,10,96,.55));box-shadow:inset 0 -3px 0 rgba(37,6,62,.5)}
+  font-size:clamp(13px,4vw,21px);line-height:1;color:#fff;
+  background:linear-gradient(180deg,var(--die),var(--die-2));
+  box-shadow:inset 0 -4px 0 var(--die-edge),inset 0 2px 2px rgba(255,255,255,.12),0 4px 10px rgba(20,6,50,.24)}
 .rv-cell.lit{color:#10331F;background:linear-gradient(180deg,var(--die-lit),var(--die-lit-2));
-  box-shadow:inset 0 -3px 0 var(--die-lit-edge),0 0 14px rgba(91,241,154,.5);
+  box-shadow:inset 0 -4px 0 var(--die-lit-edge),0 0 14px rgba(91,241,154,.45);
   animation:rvcell .34s cubic-bezier(.25,1.3,.4,1) backwards;z-index:3}
 /* each die is pressed, not just switched on */
 @keyframes rvcell{0%{transform:scale(.55);opacity:0}55%{transform:scale(1.16);opacity:1}100%{transform:scale(1)}}
 .rv-word.unique .rv-cell.lit{color:var(--navy);background:linear-gradient(180deg,#FFEE8F,#FFD93C);
-  box-shadow:inset 0 -3px 0 var(--gold-edge),0 0 16px rgba(255,217,60,.75)}
+  box-shadow:inset 0 -4px 0 var(--gold-edge),0 0 16px rgba(255,217,60,.75)}
 .rv-wordtext{font-family:var(--display);font-weight:800;font-size:clamp(22px,7vw,30px);letter-spacing:.08em;
   color:#fff;text-shadow:0 3px 0 rgba(20,6,50,.55);animation:x2in .4s cubic-bezier(.2,1.7,.4,1) backwards}
 .rv-tiles{display:flex;gap:5px}
@@ -698,8 +711,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
       <span class="hof-go">SEE</span>
     </button>
     <button class="pass-chip" id="btn-pass">
-      <span class="pc-ic">📱</span>
-      <span class="pc-body"><b>Pass &amp; Play</b><small>One phone round the table — works with no signal</small></span>
+      <span class="pc-ic">📴</span>
+      <span class="pc-body"><b>Offline multiplayer</b><small>No internet? Share one phone, take turns</small></span>
       <span class="pc-go">GO</span>
     </button>
     <div class="mode-cards">
@@ -718,10 +731,15 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   <section class="screen" id="scr-pass">
     <div class="lobby-head">
       <button class="back" id="btn-pass-back">‹ Back</button>
-      <span class="eyebrow on-stage" style="letter-spacing:.22em">PASS &amp; PLAY</span>
+      <span class="eyebrow on-stage" style="letter-spacing:.18em">OFFLINE MULTIPLAYER</span>
       <span style="width:64px"></span>
     </div>
-    <div class="pass-intro">One phone, passed round the table. Everyone gets the same board and their own turn — no internet needed.</div>
+    <ol class="pass-how">
+      <li><span>Everyone plays the <b>same board</b>, one at a time</span></li>
+      <li><span>Hand the phone on when your turn ends</span></li>
+      <li><span>Scores compared at the end, as usual</span></li>
+    </ol>
+    <div class="pass-when">For planes and dead zones. With signal, <b>Host a party</b> is better — everyone on their own phone.<br>Solo Practice and the Daily Puzzle work offline too.</div>
     <div class="card pass-card">
       <h3>Who's playing? <small id="pass-count">2 players</small></h3>
       <div class="pass-list" id="pass-list"></div>
@@ -1660,7 +1678,7 @@ const DEV = /[?#&]dev\b/.test(location.href);
    next to index.html and says what the server has right now; a few bytes,
    never cached. If it disagrees with the build baked into this page, offer the
    update — never mid-round, and never without asking. */
-const BUILD = "d5a7c5bf32ab";
+const BUILD = "8a1c9c22f4d3";
 let updateReady = null;
 async function checkForUpdate(){
   if (updateReady || G.playing) return;
@@ -1915,7 +1933,7 @@ function passHandover(){
   face.textContent = p.emoji;
   face.style.setProperty('--c', COLORS[G.turn % COLORS.length]);
   $('hand-name').textContent = G.turn === 0 && G.round === 0 ? p.name + ', you\'re first!' : 'Pass to ' + p.name;
-  $('hand-note').textContent = 'Everyone plays the same board — no peeking at anyone else\'s words!';
+  $('hand-note').textContent = 'Same board for everyone — no peeking at anyone else\'s words!';
   // who has already been, and how they did
   const done = $('hand-done'); done.replaceChildren();
   G.locals.slice(0, G.turn).forEach(q => {
