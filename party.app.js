@@ -1566,7 +1566,7 @@ function beginRound(){
 
   renderBoard();
   $('round-pill').textContent = 'R' + (G.round+1) + '/' + G.cfg.r;
-  $('my-score').textContent = '0';
+  $('my-score').textContent = '0';   // words, not points — see the HUD
   $('found-row').replaceChildren($('found-empty')); $('found-empty').style.display = '';
   $('found-empty').textContent = 'swipe the letters to spell a word!';
   $('found-count').textContent = '0 WORDS';
@@ -1853,7 +1853,7 @@ function submitPath(){
   }
   const pts = scoreFor(lw);
   G.found.set(lw, pts); G.score += pts;
-  $('my-score').textContent = G.score;
+  $('my-score').textContent = G.found.size;
   $('my-score').classList.remove('bump'); void $('my-score').offsetWidth; $('my-score').classList.add('bump');
   flashPill('good', w + '  +' + pts);
   snd.good(); buzz(24);
@@ -1917,8 +1917,10 @@ function renderRivals(){
   if (G.mode !== 'party'){ rail.replaceChildren(); rivalEls = new Map(); rivalSig = null; return; }
   /* Mid-round the number that matters is HOW MANY WORDS, not points — that is
      what everyone shouts across the room. Points are for the results. */
-  const rows = everyone().map(([id,p]) => ({
-    id, p, score: (p.me ? G.score : (p.sc && p.sc[G.round]) || 0), words: wordsOf(p, G.round)
+  /* Opponents only — your own count sits in the corner of the HUD beside the
+     clock, so it isn't repeated in the rail. */
+  const rows = everyone().filter(([,p]) => !p.me).map(([id,p]) => ({
+    id, p, score: (p.sc && p.sc[G.round]) || 0, words: wordsOf(p, G.round)
   })).sort((a,b) => b.words - a.words || b.score - a.score);
   const sig = rows.map(r => r.id + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
   if (sig !== rivalSig){                 // roster changed — rebuild the chips
@@ -1931,10 +1933,10 @@ function renderRivals(){
       d.appendChild(face);
       const b = el('b','', String(r.words));
       d.appendChild(b);
-      const nm = el('small','', r.p.me ? 'you' : r.p.name);
+      const nm = el('small','', r.p.name);
       d.appendChild(nm);
       rail.appendChild(d);
-      rivalEls.set(r.id, {d, b, nm, name: r.p.me ? 'you' : r.p.name});
+      rivalEls.set(r.id, {d, b, nm, name: r.p.name});
     });
   }
   rows.forEach((r, i) => {

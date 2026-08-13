@@ -277,10 +277,13 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .timer-num{position:absolute;inset:0;display:grid;place-items:center;padding-left:20px;font-family:var(--display);font-weight:800;
   font-size:19px;color:var(--die);font-variant-numeric:tabular-nums;z-index:2}
 .my-score{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;color:#fff;
-  text-shadow:0 3px 0 rgba(20,6,50,.5);min-width:30px;text-align:right}
+  text-shadow:0 3px 0 rgba(20,6,50,.5);min-width:30px;text-align:right;font-variant-numeric:tabular-nums}
+.my-score::after{content:'w';font-size:12px;opacity:.8;margin-left:1px}
 .my-score.bump{animation:bump .3s ease}
 @keyframes bump{40%{transform:scale(1.3)}}
-.rivals{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;min-height:44px}
+/* Opponents live in the corners above the board — name and WORD COUNT, which
+   is the number anyone actually calls out mid-round. */
+.rivals{display:flex;gap:6px;justify-content:space-between;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;min-height:44px}
 .rivals::-webkit-scrollbar{display:none}
 .rival{flex:0 0 auto;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.85);border-radius:999px;padding:4px 11px 4px 4px;
   box-shadow:0 3px 0 rgba(30,42,94,.15);transition:transform .25s ease}

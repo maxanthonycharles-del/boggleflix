@@ -277,10 +277,13 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .timer-num{position:absolute;inset:0;display:grid;place-items:center;padding-left:20px;font-family:var(--display);font-weight:800;
   font-size:19px;color:var(--die);font-variant-numeric:tabular-nums;z-index:2}
 .my-score{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;color:#fff;
-  text-shadow:0 3px 0 rgba(20,6,50,.5);min-width:30px;text-align:right}
+  text-shadow:0 3px 0 rgba(20,6,50,.5);min-width:30px;text-align:right;font-variant-numeric:tabular-nums}
+.my-score::after{content:'w';font-size:12px;opacity:.8;margin-left:1px}
 .my-score.bump{animation:bump .3s ease}
 @keyframes bump{40%{transform:scale(1.3)}}
-.rivals{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;min-height:44px}
+/* Opponents live in the corners above the board — name and WORD COUNT, which
+   is the number anyone actually calls out mid-round. */
+.rivals{display:flex;gap:6px;justify-content:space-between;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;min-height:44px}
 .rivals::-webkit-scrollbar{display:none}
 .rival{flex:0 0 auto;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.85);border-radius:999px;padding:4px 11px 4px 4px;
   box-shadow:0 3px 0 rgba(30,42,94,.15);transition:transform .25s ease}
@@ -1553,7 +1556,7 @@ const DEV = /[?#&]dev\b/.test(location.href);
    next to index.html and says what the server has right now; a few bytes,
    never cached. If it disagrees with the build baked into this page, offer the
    update — never mid-round, and never without asking. */
-const BUILD = "a151d229e67b";
+const BUILD = "731d8f4468db";
 let updateReady = null;
 async function checkForUpdate(){
   if (updateReady || G.playing) return;
@@ -2612,7 +2615,7 @@ function beginRound(){
 
   renderBoard();
   $('round-pill').textContent = 'R' + (G.round+1) + '/' + G.cfg.r;
-  $('my-score').textContent = '0';
+  $('my-score').textContent = '0';   // words, not points — see the HUD
   $('found-row').replaceChildren($('found-empty')); $('found-empty').style.display = '';
   $('found-empty').textContent = 'swipe the letters to spell a word!';
   $('found-count').textContent = '0 WORDS';
@@ -2899,7 +2902,7 @@ function submitPath(){
   }
   const pts = scoreFor(lw);
   G.found.set(lw, pts); G.score += pts;
-  $('my-score').textContent = G.score;
+  $('my-score').textContent = G.found.size;
   $('my-score').classList.remove('bump'); void $('my-score').offsetWidth; $('my-score').classList.add('bump');
   flashPill('good', w + '  +' + pts);
   snd.good(); buzz(24);
@@ -2963,8 +2966,10 @@ function renderRivals(){
   if (G.mode !== 'party'){ rail.replaceChildren(); rivalEls = new Map(); rivalSig = null; return; }
   /* Mid-round the number that matters is HOW MANY WORDS, not points — that is
      what everyone shouts across the room. Points are for the results. */
-  const rows = everyone().map(([id,p]) => ({
-    id, p, score: (p.me ? G.score : (p.sc && p.sc[G.round]) || 0), words: wordsOf(p, G.round)
+  /* Opponents only — your own count sits in the corner of the HUD beside the
+     clock, so it isn't repeated in the rail. */
+  const rows = everyone().filter(([,p]) => !p.me).map(([id,p]) => ({
+    id, p, score: (p.sc && p.sc[G.round]) || 0, words: wordsOf(p, G.round)
   })).sort((a,b) => b.words - a.words || b.score - a.score);
   const sig = rows.map(r => r.id + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
   if (sig !== rivalSig){                 // roster changed — rebuild the chips
@@ -2977,10 +2982,10 @@ function renderRivals(){
       d.appendChild(face);
       const b = el('b','', String(r.words));
       d.appendChild(b);
-      const nm = el('small','', r.p.me ? 'you' : r.p.name);
+      const nm = el('small','', r.p.name);
       d.appendChild(nm);
       rail.appendChild(d);
-      rivalEls.set(r.id, {d, b, nm, name: r.p.me ? 'you' : r.p.name});
+      rivalEls.set(r.id, {d, b, nm, name: r.p.name});
     });
   }
   rows.forEach((r, i) => {
