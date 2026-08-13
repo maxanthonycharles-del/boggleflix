@@ -409,6 +409,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .rv-bub.src b{color:var(--gold)}
 .rv-bub b{font-size:11.5px;font-weight:700;color:#fff;text-shadow:0 1px 0 rgba(18,26,96,.4);max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rv-bub.me b{color:var(--gold)}
+.bub-words{font-size:10.5px;font-weight:700;color:rgba(255,255,255,.85);letter-spacing:.04em}
 .bub-score{font-family:var(--display);font-weight:800;font-size:16px;color:var(--navy);background:var(--white);
   border-radius:999px;padding:1px 10px;box-shadow:0 3px 0 rgba(30,42,94,.18);font-variant-numeric:tabular-nums}
 .bub-score.bump{animation:rvbump .3s ease}
@@ -420,6 +421,19 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .rv-word{display:flex;flex-direction:column;align-items:center;gap:13px;position:relative;padding:16px 0;
   animation:wordin .32s cubic-bezier(.2,1.6,.4,1)}
 @keyframes wordin{from{transform:scale(.5) rotate(-3deg);opacity:0}}
+/* The round's tray, replayed: the word lights up where it actually was. */
+.rv-board{display:grid;gap:5px;width:min(62vw,250px);margin:0 auto}
+.rv-cell{aspect-ratio:1;border-radius:22%;display:grid;place-items:center;font-family:var(--display);font-weight:800;
+  font-size:clamp(10px,3.2vw,17px);line-height:1;color:rgba(255,255,255,.4);
+  background:linear-gradient(180deg,rgba(74,14,120,.55),rgba(58,10,96,.55));box-shadow:inset 0 -3px 0 rgba(37,6,62,.5)}
+.rv-cell.lit{color:#10331F;background:linear-gradient(180deg,var(--die-lit),var(--die-lit-2));
+  box-shadow:inset 0 -3px 0 var(--die-lit-edge),0 0 14px rgba(91,241,154,.5);
+  animation:rvcell .3s cubic-bezier(.2,1.7,.4,1) backwards}
+@keyframes rvcell{from{transform:scale(.35);opacity:0}}
+.rv-word.unique .rv-cell.lit{color:var(--navy);background:linear-gradient(180deg,#FFEE8F,#FFD93C);
+  box-shadow:inset 0 -3px 0 var(--gold-edge),0 0 16px rgba(255,217,60,.75)}
+.rv-wordtext{font-family:var(--display);font-weight:800;font-size:clamp(22px,7vw,30px);letter-spacing:.08em;
+  color:#fff;text-shadow:0 3px 0 rgba(20,6,50,.55);animation:x2in .4s cubic-bezier(.2,1.7,.4,1) backwards}
 .rv-tiles{display:flex;gap:5px}
 .rv-tiles span{width:calc(var(--ts,30px)*1.6);height:calc(var(--ts,30px)*1.6);border-radius:24%;display:grid;place-items:center;
   font-family:var(--display);font-weight:800;font-size:var(--ts,30px);line-height:1;color:#fff;

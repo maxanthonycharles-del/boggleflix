@@ -821,7 +821,7 @@ function syncPayload(){
   G.seq++;
   const myRec = record();
   players[Trystero.selfId] = {n: P.name, e: P.emoji, j: G.joinedAt, h: G.isHost, q: G.seq,
-                              gid: G.gameId, pid: P.pid, sc: scSelf(), fin: G.finsSelf,
+                              gid: G.gameId, pid: P.pid, sc: scSelf(), wc: wcSelf(), fin: G.finsSelf,
                               rec: {w: myRec.wins, g: myRec.games, p: myRec.pb}};
   for (const [id, p] of G.peers){
     /* A finished round is immutable history — keep relaying it even after that
@@ -832,7 +832,7 @@ function syncPayload(){
        g:1 marks the entry results-only so it can't resurrect them into the
        lobby or the host election. */
     const relayed = {n: p.name, e: p.emoji, j: p.joinedAt, h: !!p.host, gid: p.gid, pid: p.pid,
-                     sc: p.sc || {}, fin: p.fin || {}};
+                     sc: p.sc || {}, wc: p.wc || {}, fin: p.fin || {}};
     if (p.gone) relayed.g = 1;
     if (p.rec) relayed.rec = p.rec;
     if (Number.isFinite(p.seq)) relayed.q = p.seq;
@@ -844,20 +844,25 @@ function syncPayload(){
    self: `inc` is their own account of themselves, so it wins on name/avatar. */
 function mergePlayer(id, inc, {live = false, self = false} = {}){
   let cur = G.peers.get(id), isNew = false;
-  // Same person, new transport id (they reloaded): carry their history over to
-  // the new id instead of leaving a ghost holding all their points.
+  /* Same person, new transport id (they reloaded): carry their history over to
+     the new id instead of leaving a ghost holding all their points. ONLY when
+     the old entry has actually fallen silent, though — if two live players ever
+     carry the same id (a restored backup, a cloned profile, two tabs sharing
+     one localStorage) adopting would delete one of them from the party
+     outright, which is far worse than a duplicate. */
   if (!cur && inc.pid){
     for (const [oid, op] of G.peers){
-      if (op.pid === inc.pid && oid !== id){
-        G.peers.delete(oid); G.peers.set(id, op); cur = op;
-        cur.gone = false; cur.gone2 = false;
-        break;
-      }
+      if (op.pid !== inc.pid || oid === id) continue;
+      const silent = op.gone || Date.now() - (op.seen || 0) > 15000;
+      if (!silent) break;                 // they're both here — leave both alone
+      G.peers.delete(oid); G.peers.set(id, op); cur = op;
+      cur.gone = false; cur.gone2 = false;
+      break;
     }
   }
   if (!cur){
     cur = {name:'Player', emoji:'🙂', joinedAt: Date.now(), host:false, gone:false,
-           sc:{}, fin:{}, seq:-Infinity, seen:0, direct:false};
+           sc:{}, wc:{}, fin:{}, seq:-Infinity, seen:0, direct:false};
     G.peers.set(id, cur);
     isNew = true;
   }
@@ -872,6 +877,8 @@ function mergePlayer(id, inc, {live = false, self = false} = {}){
   const gid = inc.gid === undefined ? null : inc.gid;
   if (gid === null || gid === G.gameId){
     for (const r in inc.sc||{}) cur.sc[r] = Math.max(cur.sc[r]||0, inc.sc[r]||0);
+    if (!cur.wc) cur.wc = {};
+    for (const r in inc.wc||{}) cur.wc[r] = Math.max(cur.wc[r]||0, inc.wc[r]||0);
     // `self` is their own first-hand report — it must be able to replace hearsay
     for (const r in inc.fin||{}) if (self || !cur.fin[r]) cur.fin[r] = inc.fin[r];
     if (gid !== null) cur.gid = gid;
@@ -993,11 +1000,11 @@ function connect(code, asHost){
   A.start.onMessage = d => { if (!G.isHost) handleStart(d); };
   A.nxt.onMessage = d => { if (!G.isHost) handleNext(d); };
   A.sc.onMessage = (d, {peerId}) => {
-    mergePlayer(peerId, {gid: d.gid, sc: {[d.r]: d.s}}, {live: true, self: true});
+    mergePlayer(peerId, {gid: d.gid, sc: {[d.r]: d.s}, wc: {[d.r]: d.w}}, {live: true, self: true});
     renderRivals();
   };
   A.fin.onMessage = (d, {peerId}) => {
-    mergePlayer(peerId, {gid: d.gid, sc: {[d.r]: d.s}, fin: {[d.r]: d}}, {live: true, self: true});
+    mergePlayer(peerId, {gid: d.gid, sc: {[d.r]: d.s}, wc: {[d.r]: d.w}, fin: {[d.r]: d}}, {live: true, self: true});
     maybeFinishCollection(); // refreshes whichever results screen is up
   };
   /* Never yank a phone out of a live round. The host can reach the podium and
@@ -1087,6 +1094,15 @@ function everyone(){ // incl. gone (for results)
   const list = [[Trystero.selfId, {name:P.name, emoji:P.emoji, joinedAt:G.joinedAt, host:G.isHost, gone:false, sc:scSelf(), fin:G.finsSelf, me:true}]];
   for (const [id,p] of G.peers) list.push([id, p]);
   return list.sort((a,b) => (a[1].joinedAt - b[1].joinedAt) || (a[0] < b[0] ? -1 : 1));
+}
+/* How many words each of us has, per round — the number everyone actually
+   compares ("Sandra got 19 and I got 11"), live and afterwards. */
+function wcSelf(){ const o = {}; for (const r in G.finsSelf) o[r] = G.finsSelf[r].w; if (G.playing) o[G.round] = G.found.size; return o; }
+function wordsOf(p, round){
+  const f = p.me ? G.finsSelf[round] : p.fin && p.fin[round];
+  if (f) return f.w || 0;
+  if (p.me) return G.found.size;
+  return (p.wc && p.wc[round]) || 0;
 }
 function scSelf(){ const o = {}; for (const r in G.finsSelf) o[r] = G.finsSelf[r].s; if (G.playing) o[G.round] = G.score; return o; }
 function colorOf(id){
@@ -1696,6 +1712,33 @@ function cellFromPoint(x, y, starting){
   if (Math.hypot(x - cx, y - cy) > g.size * (starting ? .72 : .58)) return -1;
   return row * G.n + c;
 }
+/* Where a word actually is on the tray. The reveal shows each word lit up in
+   place, the way Boggle Party does, so you can see where you missed it — that
+   needs the path back, which we don't keep (nobody else's, anyway). It's a DFS
+   over the same adjacency the game traces with, and only ever run on a handful
+   of words at reveal time. */
+function wordPath(word, board, n, adj){
+  const B = board || G.board, N = n || G.n, A = adj || G.adj;
+  const W = String(word || '').toUpperCase();
+  if (!B || !B.length) return null;
+  const used = new Array(B.length).fill(false);
+  const walk = (i, pos) => {
+    const cell = B[i];
+    if (W.slice(pos, pos + cell.length) !== cell) return null;
+    pos += cell.length;
+    used[i] = true;
+    if (pos >= W.length){ used[i] = false; return [i]; }
+    for (const j of A[i]){
+      if (used[j]) continue;
+      const rest = walk(j, pos);
+      if (rest){ used[i] = false; return [i].concat(rest); }
+    }
+    used[i] = false;
+    return null;
+  };
+  for (let i = 0; i < B.length; i++){ const p = walk(i, 0); if (p) return p; }
+  return null;
+}
 function wordFromPath(){ return G.path.map(i => G.board[i]).join(''); }
 const SVG_NS = 'http://www.w3.org/2000/svg';
 function drawPath(){
@@ -1792,6 +1835,7 @@ window.addEventListener('pointercancel', endStroke);
 boardEl.addEventListener('contextmenu', e => e.preventDefault());
 
 function submitPath(){
+  if (!G.playing) { clearSel(); return; }   // the buzzer has gone
   const w = wordFromPath(), lw = w.toLowerCase(), tiles = G.path.slice();
   G.path = [];
   if (lw.length < G.cfg.m){
@@ -1824,7 +1868,7 @@ function submitPath(){
   setTimeout(() => chip.classList.remove('landed'), 700);
   $('found-count').textContent = G.found.size + (G.found.size === 1 ? ' WORD' : ' WORDS');
   clearSel();
-  if (G.net) G.net.A.sc.send({r: G.round, s: G.score, gid: G.gameId});
+  if (G.net) G.net.A.sc.send({r: G.round, s: G.score, w: G.found.size, gid: G.gameId});
   renderRivals();
 }
 /* Idle, the banner states the rule — the real game's "Minimum 5 characters!"
@@ -1872,7 +1916,7 @@ function renderRivals(){
   const rail = $('rivals');
   if (G.mode !== 'party'){ rail.replaceChildren(); rivalEls = new Map(); rivalSig = null; return; }
   const rows = everyone().map(([id,p]) => ({
-    id, p, score: (p.me ? G.score : (p.sc && p.sc[G.round]) || 0)
+    id, p, score: (p.me ? G.score : (p.sc && p.sc[G.round]) || 0), words: wordsOf(p, G.round)
   })).sort((a,b) => b.score - a.score);
   const sig = rows.map(r => r.id + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
   if (sig !== rivalSig){                 // roster changed — rebuild the chips
@@ -1885,9 +1929,10 @@ function renderRivals(){
       d.appendChild(face);
       const b = el('b','', String(r.score));
       d.appendChild(b);
-      d.appendChild(el('small','', r.p.me ? 'you' : r.p.name));
+      const nm = el('small','', (r.p.me ? 'you' : r.p.name) + ' · ' + r.words + 'w');
+      d.appendChild(nm);
       rail.appendChild(d);
-      rivalEls.set(r.id, {d, b});
+      rivalEls.set(r.id, {d, b, nm, name: r.p.me ? 'you' : r.p.name});
     });
   }
   rows.forEach((r, i) => {
@@ -1898,6 +1943,8 @@ function renderRivals(){
     e.d.classList.toggle('gone', !!r.p.gone);
     const txt = String(r.score);
     if (e.b.textContent !== txt) e.b.textContent = txt;
+    const nmTxt = e.name + ' · ' + r.words + 'w';
+    if (e.nm.textContent !== nmTxt) e.nm.textContent = nmTxt;
   });
 }
 
@@ -2198,6 +2245,7 @@ function runReveal(done){
     ring.appendChild(el('span','crown','👑'));
     b.appendChild(ring);
     b.appendChild(el('b','', r.p.me ? 'you' : r.p.name));
+    b.appendChild(el('span','bub-words', wordsOf(r.p, G.round) + 'w'));
     const sc = el('span','bub-score', String(r.before));
     b.appendChild(sc);
     wrap.appendChild(b);
@@ -2296,25 +2344,43 @@ function runReveal(done){
     stage.replaceChildren();
     const card = el('div','rv-word' + (e2.unique ? ' unique' : ''));
     const word = e2.w.toUpperCase();
-    const tiles = el('div','rv-tiles');
-    // letter tiles sized so even ANACONDAS fits a phone screen
-    tiles.style.setProperty('--ts', Math.max(15, Math.min(36, Math.floor((Math.min(innerWidth, 520) - 70) / word.length * .60))) + 'px');
-    const spell = 70;   // ms per die
-    [...word].forEach((ch, i) => {
-      const s = el('span','', ch);
-      s.style.animationDelay = (i * spell) + 'ms';
-      tiles.appendChild(s);
-    });
-    card.appendChild(tiles);
-    /* Whose word is it? Every word now names its finders — avatar AND name —
+    const spell = 62;   // ms per letter
+    /* The word is shown WHERE IT WAS on the tray, lighting up a die at a time —
+       that's the bit that tells you how you missed it. If the path can't be
+       found (a board we no longer hold), fall back to spelling it out. */
+    const path = wordPath(word);
+    if (path){
+      const grid = el('div','rv-board');
+      grid.style.gridTemplateColumns = 'repeat(' + G.n + ',1fr)';
+      const order = new Map(path.map((cell, k) => [cell, k]));
+      G.board.forEach((letter, idx) => {
+        const cell = el('div','rv-cell' + (order.has(idx) ? ' lit' : ''), letter);
+        if (order.has(idx)) cell.style.animationDelay = (order.get(idx) * spell) + 'ms';
+        grid.appendChild(cell);
+      });
+      card.appendChild(grid);
+      const label = el('div','rv-wordtext', word);
+      label.style.animationDelay = (path.length * spell) + 'ms';
+      card.appendChild(label);
+    } else {
+      const tiles = el('div','rv-tiles');
+      tiles.style.setProperty('--ts', Math.max(15, Math.min(36, Math.floor((Math.min(innerWidth, 520) - 70) / word.length * .60))) + 'px');
+      [...word].forEach((ch, i) => {
+        const sp = el('span','', ch);
+        sp.style.animationDelay = (i * spell) + 'ms';
+        tiles.appendChild(sp);
+      });
+      card.appendChild(tiles);
+    }
+    /* Whose word is it? Every word names its finders — avatar AND name —
        because the batched words used to show no owner at all, which is what
        made the whole reveal unreadable. */
-    const lands = word.length * spell + 140;
+    const lands = (path ? path.length : word.length) * spell + 160;
     const row = el('div','rv-finders');
     e2.finders.forEach((id, i) => {
       const r = rows.find(x => x.id === id);
       const chip = el('span','rv-finder');
-      chip.style.animationDelay = (lands + i * 90) + 'ms';
+      chip.style.animationDelay = (lands + i * 80) + 'ms';
       const face = el('span','face', r ? r.p.emoji : '🙂'); face.style.setProperty('--c', colorOf(id));
       chip.appendChild(face);
       chip.appendChild(el('i','', r ? (r.p.me ? 'you' : r.p.name) : ''));
@@ -2325,7 +2391,7 @@ function runReveal(done){
     const ribbon = el('div','rv-x2' + (e2.unique ? '' : ' shared'),
       e2.unique ? 'NOBODY ELSE FOUND IT — DOUBLE!' :
       e2.finders.length > 1 ? '🤝 SHARED BY ' + e2.finders.length + ' OF YOU' : 'FOUND IT');
-    ribbon.style.animationDelay = (lands + 120) + 'ms';
+    ribbon.style.animationDelay = (lands + 100) + 'ms';
     card.appendChild(ribbon);
     stage.appendChild(card);
     launchFromFinders(card, e2.finders);
@@ -2425,7 +2491,7 @@ function runReveal(done){
      NOT go back to scaling this by word count; that is the mistake that made
      big rounds unreadable in the first place. A long round is long: the
      tap-to-skip on the reveal screen is the escape hatch, not a faster clock. */
-  const DWELL = 1750, DWELL_UNIQUE = 2000, FLY = 620;
+  const DWELL = 1450, DWELL_UNIQUE = 1650, FLY = 520;   // "a little quicker. Only a tiny bit"
   let t = 1050, tickN = 0;
   const at2 = (ms, fn) => revealTimers.push(setTimeout(fn, ms));
 
@@ -2440,7 +2506,7 @@ function runReveal(done){
         // the word sits and is read, THEN flies into whoever found it
         at2(lands + 260, () => flyToFinders(e2));
       });
-      t += (unique ? DWELL_UNIQUE : DWELL) + Math.min(4, e2.w.length - 3) * 70;
+      t += (unique ? DWELL_UNIQUE : DWELL) + Math.min(4, e2.w.length - 3) * 55;
     });
     return t;
   }
@@ -2474,11 +2540,12 @@ function renderPodium(){
   if (G.mode !== 'party') return;
   const last = G.round >= G.cfg.r - 1;
   const multi = G.cfg.r > 1;
-  const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p), rd: roundScoreOf(p, G.round)}))
+  const rows = everyone().map(([id,p]) => ({id, p, total: totalsFor(id,p), rd: roundScoreOf(p, G.round),
+                                            words: wordsOf(p, G.round)}))
     .sort((a,b) => b.total - a.total);
   if (last) creditGame(rows);   // one game, counted once — see creditGame()
   const sig = G.round + '|' + last + '|' + G.isHost + '|' +
-    rows.map(r => r.id + ':' + r.total + ':' + r.rd + ':' + (r.p.gone?1:0) + ':' + r.p.name + r.p.emoji).join(',');
+    rows.map(r => r.id + ':' + r.total + ':' + r.rd + ':' + r.words + ':' + (r.p.gone?1:0) + ':' + r.p.name + r.p.emoji).join(',');
   if (sig === podiumSig) return;
   podiumSig = sig;
   $('podium-title').textContent = last ? '🏆 Final results!' : '🏆 Round ' + (G.round+1) + ' podium';
@@ -2497,6 +2564,7 @@ function renderPodium(){
     const block = el('div','block');
     block.appendChild(el('span','medal', ['🥇','🥈','🥉'][rankIdx] || ''));
     block.appendChild(el('span','score', r.total + ' pts'));
+    block.appendChild(el('span','delta', r.words + (r.words === 1 ? ' word' : ' words')));
     // mid-game the interesting number is what this round just added
     if (multi) block.appendChild(el('span','delta', '+' + r.rd + ' this round'));
     pod.appendChild(block);
@@ -2509,7 +2577,7 @@ function renderPodium(){
     const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
     row.appendChild(face);
     const info = el('div','info'); info.appendChild(el('b','', r.p.me ? r.p.name + ' (you)' : r.p.name));
-    if (multi) info.appendChild(el('small','', '+' + r.rd + ' this round'));
+    info.appendChild(el('small','', r.words + (r.words === 1 ? ' word' : ' words') + (multi ? ' · +' + r.rd + ' this round' : '')));
     row.appendChild(info);
     row.appendChild(el('span','pts', String(r.total)));
     rest.appendChild(row);
