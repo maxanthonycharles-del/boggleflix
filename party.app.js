@@ -1915,9 +1915,11 @@ let rivalEls = new Map(), rivalSig = null;
 function renderRivals(){
   const rail = $('rivals');
   if (G.mode !== 'party'){ rail.replaceChildren(); rivalEls = new Map(); rivalSig = null; return; }
+  /* Mid-round the number that matters is HOW MANY WORDS, not points — that is
+     what everyone shouts across the room. Points are for the results. */
   const rows = everyone().map(([id,p]) => ({
     id, p, score: (p.me ? G.score : (p.sc && p.sc[G.round]) || 0), words: wordsOf(p, G.round)
-  })).sort((a,b) => b.score - a.score);
+  })).sort((a,b) => b.words - a.words || b.score - a.score);
   const sig = rows.map(r => r.id + (r.p.gone?'!':'') + r.p.name + r.p.emoji).sort().join(',');
   if (sig !== rivalSig){                 // roster changed — rebuild the chips
     rivalSig = sig;
@@ -1927,9 +1929,9 @@ function renderRivals(){
       const d = el('div','rival');
       const face = el('span','face', r.p.emoji); face.style.setProperty('--c', colorOf(r.id));
       d.appendChild(face);
-      const b = el('b','', String(r.score));
+      const b = el('b','', String(r.words));
       d.appendChild(b);
-      const nm = el('small','', (r.p.me ? 'you' : r.p.name) + ' · ' + r.words + 'w');
+      const nm = el('small','', r.p.me ? 'you' : r.p.name);
       d.appendChild(nm);
       rail.appendChild(d);
       rivalEls.set(r.id, {d, b, nm, name: r.p.me ? 'you' : r.p.name});
@@ -1939,12 +1941,11 @@ function renderRivals(){
     const e = rivalEls.get(r.id);
     if (!e) return;
     e.d.style.order = i;
-    e.d.classList.toggle('first', i === 0 && r.score > 0);
+    e.d.classList.toggle('first', i === 0 && r.words > 0);
     e.d.classList.toggle('gone', !!r.p.gone);
-    const txt = String(r.score);
+    const txt = String(r.words);
     if (e.b.textContent !== txt) e.b.textContent = txt;
-    const nmTxt = e.name + ' · ' + r.words + 'w';
-    if (e.nm.textContent !== nmTxt) e.nm.textContent = nmTxt;
+    if (e.nm.textContent !== e.name) e.nm.textContent = e.name;
   });
 }
 
@@ -2344,7 +2345,8 @@ function runReveal(done){
     stage.replaceChildren();
     const card = el('div','rv-word' + (e2.unique ? ' unique' : ''));
     const word = e2.w.toUpperCase();
-    const spell = 62;   // ms per letter
+    const spell = 62;   // ms per letter as it is spelled out on the tray
+    const BEAT = 200;   // the pause between making the word and showing it
     /* The word is shown WHERE IT WAS on the tray, lighting up a die at a time —
        that's the bit that tells you how you missed it. If the path can't be
        found (a board we no longer hold), fall back to spelling it out. */
@@ -2359,8 +2361,11 @@ function runReveal(done){
         grid.appendChild(cell);
       });
       card.appendChild(grid);
+      /* A beat after the last die lands, THEN the word itself — three clear
+         steps: the word being made on the board, the word, and then it going
+         down to whoever found it. */
       const label = el('div','rv-wordtext', word);
-      label.style.animationDelay = (path.length * spell) + 'ms';
+      label.style.animationDelay = (path.length * spell + BEAT) + 'ms';
       card.appendChild(label);
     } else {
       const tiles = el('div','rv-tiles');
@@ -2375,7 +2380,7 @@ function runReveal(done){
     /* Whose word is it? Every word names its finders — avatar AND name —
        because the batched words used to show no owner at all, which is what
        made the whole reveal unreadable. */
-    const lands = (path ? path.length : word.length) * spell + 160;
+    const lands = (path ? path.length : word.length) * spell + BEAT + 190;
     const row = el('div','rv-finders');
     e2.finders.forEach((id, i) => {
       const r = rows.find(x => x.id === id);
@@ -2491,7 +2496,7 @@ function runReveal(done){
      NOT go back to scaling this by word count; that is the mistake that made
      big rounds unreadable in the first place. A long round is long: the
      tap-to-skip on the reveal screen is the escape hatch, not a faster clock. */
-  const DWELL = 1450, DWELL_UNIQUE = 1650, FLY = 520;   // "a little quicker. Only a tiny bit"
+  const DWELL = 1500, DWELL_UNIQUE = 1700, FLY = 520;   // "a little quicker. Only a tiny bit"
   let t = 1050, tickN = 0;
   const at2 = (ms, fn) => revealTimers.push(setTimeout(fn, ms));
 

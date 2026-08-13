@@ -253,20 +253,20 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
   animation:finalpulse 1s ease-in-out infinite}
 @keyframes finalpulse{0%,100%{box-shadow:inset 0 0 45px 0 rgba(75,0,22,.18)}
   50%{box-shadow:inset 0 0 110px 30px rgba(75,0,22,.72)}}
-.hud{display:flex;align-items:center;gap:8px}
+.hud{display:flex;align-items:center;gap:6px}
 .hud-btn{flex:0 0 auto;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
   font-family:var(--display);font-weight:800;font-size:16px;line-height:1;color:#fff;
   background:linear-gradient(180deg,var(--die),var(--die-2));box-shadow:0 3px 0 var(--die-edge);
   transition:transform .1s ease,background .15s ease}
 .hud-btn:active{transform:translateY(2px);box-shadow:0 1px 0 var(--die-edge)}
 .hud-btn.sound{font-size:15px}
-.round-pill{font-family:var(--display);font-weight:800;font-size:14px;color:#fff;
+.round-pill{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:13.5px;color:#fff;
   background:linear-gradient(180deg,var(--die),var(--die-2));box-shadow:0 3px 0 var(--die-edge);
   border-radius:999px;padding:7px 12px;white-space:nowrap}
 /* The clock is a white pill with an hourglass and the time in deep violet, the
    way Boggle Party's is — the remaining time still drains across it as a soft
    fill so you can feel it going without reading the numbers. */
-.timer-wrap{flex:1;max-width:190px;height:38px;background:#fff;border-radius:999px;overflow:hidden;position:relative;
+.timer-wrap{flex:1;min-width:0;max-width:150px;height:38px;background:#fff;border-radius:999px;overflow:hidden;position:relative;
   box-shadow:0 4px 0 rgba(20,6,50,.25),0 8px 18px rgba(20,30,120,.22)}
 .timer-wrap::before{content:'⏳';position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:17px;z-index:2}
 .timer-wrap.warn{animation:timerwarn .5s ease 3}
@@ -276,7 +276,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .timer-fill.low{background:rgba(255,71,87,.34)}
 .timer-num{position:absolute;inset:0;display:grid;place-items:center;padding-left:20px;font-family:var(--display);font-weight:800;
   font-size:19px;color:var(--die);font-variant-numeric:tabular-nums;z-index:2}
-.my-score{font-family:var(--display);font-weight:800;font-size:24px;color:#fff;text-shadow:0 3px 0 rgba(20,6,50,.5);min-width:46px;text-align:right}
+.my-score{flex:0 0 auto;font-family:var(--display);font-weight:800;font-size:22px;color:#fff;
+  text-shadow:0 3px 0 rgba(20,6,50,.5);min-width:30px;text-align:right}
 .my-score.bump{animation:bump .3s ease}
 @keyframes bump{40%{transform:scale(1.3)}}
 .rivals{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px;min-height:44px}
@@ -284,8 +285,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-o
 .rival{flex:0 0 auto;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.85);border-radius:999px;padding:4px 11px 4px 4px;
   box-shadow:0 3px 0 rgba(30,42,94,.15);transition:transform .25s ease}
 .rival .face{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:16px;background:#fff;border:3px solid var(--c,#3B82F6)}
-.rival b{font-family:var(--display);font-weight:800;font-size:15px;color:var(--navy)}
-.rival small{font-size:11px;font-weight:600;color:var(--navy-soft);max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rival b{font-family:var(--display);font-weight:800;font-size:17px;color:var(--navy);font-variant-numeric:tabular-nums}
+.rival b::after{content:'w';font-size:11px;font-weight:700;color:var(--navy-soft);margin-left:1px}
+.rival small{font-size:11.5px;font-weight:700;color:var(--navy-soft);max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rival.first{background:var(--gold);box-shadow:0 3px 0 var(--gold-edge)}
 .rival.gone{opacity:.4;filter:grayscale(1)}
 .word-pill-wrap{display:flex;justify-content:center;height:48px;align-items:center;position:relative;margin-top:auto}
