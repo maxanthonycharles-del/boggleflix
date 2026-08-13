@@ -2326,11 +2326,14 @@ function runReveal(done){
     if (!to.width) return;
     const dx = cx - (to.left + to.width/2), dy = cy - (to.top + to.height/2);
     card.style.animation = 'none';   // the CSS pop would fight this for the transform
+    /* It still leaps out of their avatar, but it gets down to its own place
+       quickly and stops short of riding back up over the scores on the way —
+       at full size it would sit right on top of the numbers. */
     card.animate(
-      [{transform: 'translate(' + dx + 'px,' + dy + 'px) scale(.12)', opacity: .2, offset: 0},
-       {transform: 'translate(' + (dx*.25) + 'px,' + (dy*.25 - 14) + 'px) scale(.92)', opacity: 1, offset: .62},
+      [{transform: 'translate(' + dx + 'px,' + dy + 'px) scale(.10)', opacity: .2, offset: 0},
+       {transform: 'translate(' + (dx*.16) + 'px,' + (dy*.16) + 'px) scale(.72)', opacity: 1, offset: .5},
        {transform: 'none', opacity: 1, offset: 1}],
-      {duration: 620, easing: 'cubic-bezier(.22,1.1,.32,1)'}
+      {duration: 520, easing: 'cubic-bezier(.22,1.05,.3,1)'}
     );
     pts.forEach((_, k) => {
       const b = bubbles.get(finders[k]);
